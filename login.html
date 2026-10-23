@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Login | Mr. Singh Publications</title>
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Mulish:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="auth-page">
+<header class="navbar scrolled">
+  <div class="container nav-inner">
+    <a class="brand" href="index.html" aria-label="Mr. Singh Publications home">
+      <img src="logo.png" alt="Mr. Singh Publications logo" width="56" height="56">
+      <span class="brand-text">Mr. Singh Publications</span>
+    </a>
+    <div class="nav-actions">
+      <a class="btn btn-outline btn-sm" href="index.html">Back to Store</a>
+    </div>
+  </div>
+</header>
+
+<main class="auth-wrap">
+  <section class="auth-card" aria-labelledby="authTitle">
+    <h1 id="authTitle">Sign in</h1>
+    <p class="auth-sub" id="authSub">Access your orders and saved books.</p>
+
+    <div class="tabs" id="tabs" role="tablist" aria-label="Account type">
+      <span class="tab-indicator" aria-hidden="true"></span>
+      <button class="tab-btn" id="tabUser" type="button" role="tab" aria-selected="true" aria-controls="panelUser">User</button>
+      <button class="tab-btn" id="tabAdmin" type="button" role="tab" aria-selected="false" aria-controls="panelAdmin" tabindex="-1">Admin</button>
+    </div>
+
+    <div class="form-panel" id="panelUser" role="tabpanel" aria-labelledby="tabUser">
+      <div class="mode-switch">
+        <button class="mode-btn active" id="modeLogin" type="button">Login</button>
+        <button class="mode-btn" id="modeSignup" type="button">Sign up</button>
+      </div>
+
+      <form id="loginForm" novalidate>
+        <div class="field">
+          <label for="loginEmail">Email</label>
+          <input type="email" id="loginEmail" autocomplete="email" placeholder="you@example.com">
+          <p class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="loginPass">Password</label>
+          <input type="password" id="loginPass" autocomplete="current-password" placeholder="Your password">
+          <p class="field-error"></p>
+        </div>
+        <label class="show-pass"><input type="checkbox" data-show="loginPass"> Show password</label>
+        <p class="form-msg" id="loginMsg" role="alert"></p>
+        <button class="btn btn-gold btn-block" type="submit">Login</button>
+      </form>
+
+      <form id="signupForm" novalidate hidden>
+        <div class="field">
+          <label for="signName">Full name</label>
+          <input type="text" id="signName" autocomplete="name" placeholder="Your full name">
+          <p class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="signEmail">Email</label>
+          <input type="email" id="signEmail" autocomplete="email" placeholder="you@example.com">
+          <p class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="signPass">Password</label>
+          <input type="password" id="signPass" autocomplete="new-password" placeholder="At least 8 characters, with a number">
+          <p class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="signPass2">Confirm password</label>
+          <input type="password" id="signPass2" autocomplete="new-password" placeholder="Type the password again">
+          <p class="field-error"></p>
+        </div>
+        <label class="show-pass"><input type="checkbox" data-show="signPass signPass2"> Show passwords</label>
+        <p class="form-msg" id="signupMsg" role="alert"></p>
+        <button class="btn btn-gold btn-block" type="submit">Create account</button>
+      </form>
+    </div>
+
+    <div class="form-panel" id="panelAdmin" role="tabpanel" aria-labelledby="tabAdmin" hidden>
+      <form id="adminForm" novalidate>
+        <div class="field">
+          <label for="adminEmail">Admin email</label>
+          <input type="email" id="adminEmail" autocomplete="username" placeholder="admin email">
+          <p class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="adminPass">Admin password</label>
+          <input type="password" id="adminPass" autocomplete="current-password" placeholder="Admin password">
+          <p class="field-error"></p>
+        </div>
+        <label class="show-pass"><input type="checkbox" data-show="adminPass"> Show password</label>
+        <p class="form-msg" id="adminMsg" role="alert"></p>
+        <button class="btn btn-gold btn-block" type="submit">Open dashboard</button>
+      </form>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="script.js" defer></script>
+</body>
+</html>

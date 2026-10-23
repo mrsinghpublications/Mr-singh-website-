@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin Dashboard | Mr. Singh Publications</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/png" href="logo.png">
+<script>
+(function () {
+  var ok = false;
+  try { var s = JSON.parse(localStorage.getItem('msp_session')); ok = !!s && s.role === 'admin'; } catch (e) { ok = false; }
+  if (!ok) {
+    document.documentElement.classList.add('locked');
+    location.replace('login.html?tab=admin');
+  }
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Mulish:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="admin-page">
+<header class="navbar scrolled">
+  <div class="container nav-inner">
+    <a class="brand" href="index.html" aria-label="Mr. Singh Publications home">
+      <img src="logo.png" alt="Mr. Singh Publications logo" width="56" height="56">
+      <span class="brand-text">Admin Dashboard</span>
+    </a>
+    <div class="nav-actions">
+      <a class="btn btn-outline btn-sm" href="index.html">Back to Store</a>
+      <button class="btn btn-gold btn-sm" id="logoutBtn" type="button">Logout</button>
+    </div>
+  </div>
+</header>
+
+<main class="container admin-main">
+  <div class="admin-title">
+    <h1>Store management</h1>
+    <p class="muted">Add books, update prices and stock, and control the store-wide offer.</p>
+  </div>
+
+  <section class="panel" aria-labelledby="formTitle">
+    <h2 id="formTitle">Add a product</h2>
+    <form id="productForm" novalidate>
+      <div class="form-grid">
+        <div class="field full">
+          <label for="pTitle">Book / product title</label>
+          <input type="text" id="pTitle" placeholder="e.g. Mind Mastery" maxlength="120">
+          <p class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="pAuthor">Author</label>
+          <input type="text" id="pAuthor" value="Dayashankar Singh" maxlength="80">
+          <p class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="pCategory">Category</label>
+          <select id="pCategory">
+            <option value="exam">Exam preparation</option>
+            <option value="psychology">Psychology</option>
+            <option value="finance">Personal finance</option>
+            <option value="growth">Self growth</option>
+          </select>
+          <p class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="pPrice">Original price (₹)</label>
+          <input type="number" id="pPrice" min="1" step="1" inputmode="numeric" placeholder="499">
+          <p class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="pSale">Discounted price (₹)</label>
+          <input type="number" id="pSale" min="1" step="1" inputmode="numeric" placeholder="Leave blank for no discount">
+          <p class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="pStock">Stock status</label>
+          <select id="pStock">
+            <option value="in">In stock</option>
+            <option value="out">Out of stock</option>
+          </select>
+          <p class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="pImage">Image URL</label>
+          <input type="text" id="pImage" placeholder="https://… or cover.jpg">
+          <p class="field-error"></p>
+        </div>
+        <div class="field full">
+          <label for="pFile">Or upload a cover image</label>
+          <div class="upload-row">
+            <div class="img-preview" id="imgPreview" role="img" aria-label="Cover preview"></div>
+            <div class="upload-controls">
+              <input type="file" id="pFile" accept="image/*">
+              <button class="btn btn-outline btn-sm" id="clearImg" type="button">Remove image</button>
+            </div>
+          </div>
+          <p class="field-error" id="fileError"></p>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-gold" id="saveProduct" type="submit">Add product</button>
+        <button class="btn btn-outline" id="cancelEdit" type="button" hidden>Cancel edit</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="panel" aria-labelledby="listTitle">
+    <h2 id="listTitle">Manage products <span class="count-badge" id="productCount">0</span></h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Cover</th>
+            <th scope="col">Title</th>
+            <th scope="col">Category</th>
+            <th scope="col">Price</th>
+            <th scope="col">Stock</th>
+            <th scope="col">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="productRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="offerTitle">
+    <h2 id="offerTitle">Promotional offer</h2>
+    <form id="offerForm" novalidate>
+      <div class="form-grid">
+        <div class="field full">
+          <label for="oText">Promotional banner text</label>
+          <input type="text" id="oText" placeholder="e.g. Festival sale: 15% off every book" maxlength="140">
+          <p class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="oPercent">Discount percentage</label>
+          <input type="number" id="oPercent" min="0" max="90" step="1" inputmode="numeric" placeholder="0 to 90">
+          <p class="field-error"></p>
+        </div>
+        <div class="field">
+          <label for="oCode">Coupon code</label>
+          <input type="text" id="oCode" placeholder="Leave blank to apply automatically" maxlength="20" autocapitalize="characters">
+          <p class="field-error"></p>
+        </div>
+        <div class="field full">
+          <label class="switch" for="oActive">
+            <input type="checkbox" id="oActive" role="switch">
+            <span class="slider" aria-hidden="true"></span>
+            <span class="switch-text" id="offerState">Inactive</span>
+          </label>
+        </div>
+      </div>
+      <div class="offer-preview off" id="offerPreview" aria-live="polite">
+        <span id="prevText">Your banner text appears here</span>
+        <span class="code-chip" id="prevPct" hidden></span>
+        <span class="code-chip" id="prevCode" hidden></span>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-gold" type="submit">Save offer</button>
+      </div>
+      <p class="muted small">Changes go live in the store when you save.</p>
+    </form>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="script.js" defer></script>
+</body>
+</html>
