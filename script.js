@@ -10,7 +10,10 @@
     session: 'msp_session',
     cart: 'msp_cart',
     coupon: 'msp_coupon',
-    orders: 'msp_orders'
+    orders: 'mrsingh_orders',
+    legacyOrders: 'msp_orders',
+    device: 'msp_device',
+    settings: 'msp_settings'
   };
   var ADMIN = { email: 'admin@mrsingh.com', password: 'admin123', name: 'Admin' };
   var AUTHOR = 'Dayashankar Singh';
@@ -27,6 +30,11 @@
     { id: 'p-money-habits', title: 'Money Habits Workbook', author: AUTHOR, price: 179, salePrice: 149, category: 'finance', image: '', stock: 'in' }
   ];
   var DEFAULT_OFFER = { active: true, text: 'Welcome offer: 10% off your first order', percent: 10, code: 'WELCOME10' };
+  var STATUSES = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
+  var STATUS_LABEL = { pending: 'Pending', confirmed: 'Confirmed', shipped: 'Shipped', delivered: 'Delivered', cancelled: 'Cancelled' };
+  var METHOD_LABEL = { upi: 'UPI / QR', card: 'Card / NetBanking (demo)', cod: 'Cash on Delivery' };
+  var DEFAULT_SETTINGS = { upiId: 'mrsinghpublications@upi', payee: 'Mr. Singh Publications' };
+  var UPI_RE = /^[a-zA-Z0-9._-]{2,64}@[a-zA-Z][a-zA-Z0-9]{1,30}$/;
 
   /* ---------- Helpers ---------- */
   function $(id) { return document.getElementById(id); }
@@ -116,6 +124,65 @@
       percent: Math.max(0, Number(o.percent) || 0),
       code: String(o.code || '').trim().toUpperCase()
     };
+  }
+
+  function getSettings() {
+    var s = read(KEY.settings, null);
+    if (!s || typeof s !== 'object') { s = {}; }
+    return { upiId: String(s.upiId || DEFAULT_SETTINGS.upiId), payee: String(s.payee || DEFAULT_SETTINGS.payee) };
+  }
+  function getOrders() {
+    var o = read(KEY.orders, []);
+    return Array.isArray(o) ? o : [];
+  }
+  function rawOrders() {
+    try { return localStorage.getItem(KEY.orders) || ''; } catch (e) { return ''; }
+  }
+  function migrateOrders() {
+    try { if (localStorage.getItem(KEY.orders) !== null) { return; } } catch (e) { return; }
+    var legacy = read(KEY.legacyOrders, null);
+    if (Array.isArray(legacy) && legacy.length) { write(KEY.orders, legacy); }
+  }
+  function getDeviceId() {
+    var id = read(KEY.device, '');
+    if (!id) {
+      id = 'dev-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+      write(KEY.device, id);
+    }
+    return id;
+  }
+  function nextOrderId() {
+    var max = 1000;
+    getOrders().forEach(function (o) {
+      var m = /^#?MRS-(\d+)$/i.exec(String(o.id));
+      if (m && Number(m[1]) > max) { max = Number(m[1]); }
+    });
+    return '#MRS-' + (max + 1);
+  }
+  function ordersForViewer() {
+    var sess = getSession(), dev = getDeviceId();
+    var email = sess ? String(sess.email).toLowerCase() : '';
+    return getOrders().filter(function (o) {
+      if (sess) { return String(o.email || '').toLowerCase() === email; }
+      return o.deviceId === dev;
+    });
+  }
+  function qrFallbackUrl(data, size) {
+    return 'https://quickchart.io/qr?size=' + size + '&margin=2&text=' + encodeURIComponent(data);
+  }
+  function orderStatus(o) { return STATUSES.indexOf(o.status) > -1 ? o.status : 'pending'; }
+  function statusBadge(status) { return '<span class="status-badge st-' + status + '">' + STATUS_LABEL[status] + '</span>'; }
+  function methodText(o) { return METHOD_LABEL[o.method] || 'Not recorded'; }
+  function fmtDate(iso) {
+    var d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : d.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });
+  }
+  function upiUri(settings, amount, orderId) {
+    return 'upi://pay?pa=' + settings.upiId + '&pn=' + encodeURIComponent(settings.payee) +
+      (amount > 0 ? '&am=' + Number(amount).toFixed(2) : '') + '&cu=INR' + (orderId ? '&tn=' + encodeURIComponent(orderId) : '');
+  }
+  function qrUrl(data, size) {
+    return 'https://api.qrserver.com/v1/create-qr-code/?size=' + size + 'x' + size + '&margin=8&data=' + encodeURIComponent(data);
   }
 
   /* ---------- Shared page behaviour ---------- */
@@ -447,32 +514,7 @@
       toast('Offer applied: ' + code + ' (' + ev.pct + '% off)');
     });
 
-    $('checkoutBtn').addEventListener('click', function () {
-      var lines = getCart();
-      if (!lines.length) { toast('Your cart is empty.'); return; }
-      var session = getSession();
-      if (!session) {
-        toast('Please login to checkout.');
-        setTimeout(function () { location.href = 'login.html'; }, 1200);
-        return;
-      }
-      var t = totals(lines);
-      var orders = read(KEY.orders, []);
-      if (!Array.isArray(orders)) { orders = []; }
-      orders.push({
-        id: 'ORD' + Date.now().toString(36).toUpperCase(),
-        email: session.email,
-        date: new Date().toISOString(),
-        items: lines.map(function (l) { return { id: l.product.id, title: l.product.title, qty: l.qty, price: l.product.salePrice }; }),
-        subtotal: t.subtotal, discount: t.discount, total: t.total
-      });
-      if (!write(KEY.orders, orders)) { toast('The order could not be saved. Allow site data and try again.'); return; }
-      write(KEY.cart, []);
-      write(KEY.coupon, '');
-      renderCart();
-      closeCart();
-      toast('Order placed! Total ' + money(t.total));
-    });
+    $('checkoutBtn').addEventListener('click', startCheckout);
 
     /* Drawer */
     var drawer = $('cartDrawer'), overlay = $('overlay');
@@ -493,10 +535,12 @@
     }
     $('cartBtn').addEventListener('click', openCart);
     $('closeCart').addEventListener('click', closeCart);
-    overlay.addEventListener('click', closeCart);
+    overlay.addEventListener('click', function () { closeCart(); closeOrders(); });
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Escape') {
         if (drawer.classList.contains('open')) { closeCart(); }
+        closeOrders();
+        closeCheckout();
         navLinks.classList.remove('open');
         menuToggle.setAttribute('aria-expanded', 'false');
       }
@@ -522,6 +566,311 @@
       contact.addEventListener('submit', function () { toast('Opening your email app…'); });
     }
 
+    /* ---------- Checkout, payment and order history ---------- */
+    var cModal = $('checkoutModal');
+    var oDrawer = $('ordersDrawer');
+    var checkout = { orderId: '', ship: null, busy: false };
+    var STEP_IDS = ['stepShip', 'stepPay', 'stepDone'];
+    var SHIP_IDS = ['shipName', 'shipPhone', 'shipEmail', 'shipAddress', 'shipPin'];
+    var PAY_IDS = ['utr', 'cardName', 'cardNumber', 'cardExpiry', 'cardCvv'];
+
+    function cleanPhone(v) { return String(v).replace(/[\s\-()]/g, '').replace(/^(\+91|91|0)(?=\d{10}$)/, ''); }
+    function luhn(num) {
+      var sum = 0, alt = false;
+      for (var i = num.length - 1; i >= 0; i--) {
+        var n = parseInt(num.charAt(i), 10);
+        if (alt) { n *= 2; if (n > 9) { n -= 9; } }
+        sum += n;
+        alt = !alt;
+      }
+      return sum % 10 === 0;
+    }
+    function selectedMethod() { return document.querySelector('input[name="payMethod"]:checked').value; }
+
+    function setStep(n) {
+      STEP_IDS.forEach(function (id, i) { $(id).hidden = i !== n; });
+      Array.prototype.forEach.call($('checkoutSteps').children, function (li, i) {
+        li.classList.toggle('active', i === n);
+        li.classList.toggle('done', i < n);
+      });
+      $('checkoutTitle').textContent = n === 2 ? 'Order confirmed' : 'Checkout';
+      cModal.scrollTop = 0;
+      cModal.querySelector('.modal').scrollTop = 0;
+    }
+
+    function setBusy(on) {
+      checkout.busy = on;
+      var btn = $('placeOrderBtn');
+      btn.classList.toggle('loading', on);
+      btn.disabled = on;
+      $('backToShip').disabled = on;
+    }
+
+    function fillPaySummary() {
+      var t = totals(getCart());
+      $('payItems').textContent = t.qty + (t.qty === 1 ? ' book' : ' books');
+      $('paySubtotal').textContent = money(t.subtotal);
+      $('payDiscount').textContent = '−' + money(t.discount);
+      $('payTotal').textContent = money(t.total);
+    }
+
+    function refreshUpi() {
+      var t = totals(getCart());
+      var st = getSettings();
+      var uri = upiUri(st, t.total, checkout.orderId);
+      $('upiIdText').textContent = st.upiId;
+      $('upiAmount').textContent = money(t.total);
+      $('upiAppLink').href = uri;
+      $('qrFallback').hidden = true;
+      $('upiQr').hidden = false;
+      checkout.qrUri = uri;
+      checkout.qrTry = 0;
+      $('upiQr').src = qrUrl(uri, 240);
+    }
+    $('upiQr').addEventListener('error', function () {
+      if (checkout.qrTry === 0 && checkout.qrUri) { checkout.qrTry = 1; this.src = qrFallbackUrl(checkout.qrUri, 240); return; }
+      this.hidden = true;
+      $('qrFallback').hidden = false;
+    });
+
+    function setMethod(m) {
+      Array.prototype.forEach.call(document.querySelectorAll('input[name="payMethod"]'), function (r) {
+        r.checked = r.value === m;
+        r.closest('.pay-option').classList.toggle('active', r.checked);
+      });
+      $('panelUpi').hidden = m !== 'upi';
+      $('panelCard').hidden = m !== 'card';
+      $('panelCod').hidden = m !== 'cod';
+      if (m === 'upi') { refreshUpi(); }
+    }
+    Array.prototype.forEach.call(document.querySelectorAll('input[name="payMethod"]'), function (r) {
+      r.addEventListener('change', function () { setMethod(r.value); });
+    });
+
+    $('cardNumber').addEventListener('input', function () {
+      this.value = this.value.replace(/\D/g, '').slice(0, 19).replace(/(.{4})/g, '$1 ').trim();
+    });
+    $('cardExpiry').addEventListener('input', function () {
+      var d = this.value.replace(/\D/g, '').slice(0, 4);
+      this.value = d.length > 2 ? d.slice(0, 2) + '/' + d.slice(2) : d;
+    });
+    $('cardCvv').addEventListener('input', function () { this.value = this.value.replace(/\D/g, '').slice(0, 4); });
+    $('utr').addEventListener('input', function () { this.value = this.value.replace(/\D/g, '').slice(0, 12); });
+
+    function prefillShipping(sess) {
+      var mine = ordersForViewer();
+      var last = mine[mine.length - 1] || {};
+      $('shipName').value = last.name || (sess && sess.name) || '';
+      $('shipPhone').value = last.phone || '';
+      $('shipEmail').value = sess ? sess.email : (last.shipEmail || last.email || '');
+      $('shipAddress').value = last.address || '';
+      $('shipPin').value = last.pin || '';
+      SHIP_IDS.forEach(function (id) { setErr($(id), ''); });
+    }
+
+    function resetPayment() {
+      $('payForm').reset();
+      PAY_IDS.forEach(function (id) { setErr($(id), ''); });
+      setBusy(false);
+      setMethod('upi');
+    }
+
+    function startCheckout() {
+      var lines = getCart();
+      if (!lines.length) { toast('Your cart is empty.'); return; }
+      var sess = getSession();
+      checkout.orderId = nextOrderId();
+      closeCart();
+      closeOrders();
+      prefillShipping(sess);
+      resetPayment();
+      setStep(0);
+      cModal.classList.add('open');
+      cModal.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      $('shipName').focus();
+    }
+
+    function closeCheckout() {
+      if (!cModal.classList.contains('open') || checkout.busy) { return; }
+      cModal.classList.remove('open');
+      cModal.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+    $('closeCheckout').addEventListener('click', closeCheckout);
+    cModal.addEventListener('click', function (e) { if (e.target === cModal) { closeCheckout(); } });
+
+    /* Step 1: shipping */
+    var shipForm = $('shipForm');
+    shipForm.addEventListener('input', function (e) { if (e.target.closest('.field')) { setErr(e.target, ''); } });
+    shipForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var ok = true;
+      var n = $('shipName'), p = $('shipPhone'), m = $('shipEmail'), a = $('shipAddress'), z = $('shipPin');
+      SHIP_IDS.forEach(function (id) { setErr($(id), ''); });
+      if (n.value.trim().length < 2) { setErr(n, 'Enter your full name.'); ok = false; }
+      if (!/^[6-9]\d{9}$/.test(cleanPhone(p.value))) { setErr(p, 'Enter a valid 10-digit mobile number.'); ok = false; }
+      if (!EMAIL_RE.test(m.value.trim())) { setErr(m, 'Enter a valid email, like name@example.com.'); ok = false; }
+      if (a.value.trim().length < 10) { setErr(a, 'Enter your full address with house number, area and city.'); ok = false; }
+      if (!/^[1-9]\d{5}$/.test(z.value.trim())) { setErr(z, 'Enter a valid 6-digit PIN code.'); ok = false; }
+      if (!ok) { shake(shipForm); toast('Please fix the highlighted fields.'); return; }
+      checkout.ship = { name: n.value.trim(), phone: cleanPhone(p.value), email: m.value.trim().toLowerCase(), address: a.value.trim(), pin: z.value.trim() };
+      fillPaySummary();
+      setStep(1);
+      setMethod(selectedMethod());
+      toast('Shipping details saved. Choose how to pay.');
+    });
+
+    /* Step 2: payment */
+    var payForm = $('payForm');
+    payForm.addEventListener('input', function (e) { if (e.target.closest('.field')) { setErr(e.target, ''); } });
+    $('backToShip').addEventListener('click', function () { setStep(0); });
+
+    function validateCard() {
+      var ok = true;
+      var nm = $('cardName'), nu = $('cardNumber'), ex = $('cardExpiry'), cv = $('cardCvv');
+      [nm, nu, ex, cv].forEach(function (el) { setErr(el, ''); });
+      if (nm.value.trim().length < 2) { setErr(nm, 'Enter the name on the card.'); ok = false; }
+      var digits = nu.value.replace(/\D/g, '');
+      if (digits.length < 13 || !luhn(digits)) { setErr(nu, 'Enter a valid card number.'); ok = false; }
+      var m = /^(\d{2})\/(\d{2})$/.exec(ex.value), now = new Date();
+      if (!m || +m[1] < 1 || +m[1] > 12 || (2000 + +m[2]) * 12 + +m[1] < now.getFullYear() * 12 + now.getMonth() + 1) {
+        setErr(ex, 'Enter a valid expiry, like 08/29.'); ok = false;
+      }
+      if (!/^\d{3,4}$/.test(cv.value)) { setErr(cv, 'Enter the 3 or 4 digit CVV.'); ok = false; }
+      return ok;
+    }
+
+    function renderReceipt(o) {
+      var note = o.method === 'upi' ? 'We will confirm your order once your UPI payment is verified.'
+        : (o.method === 'cod' ? 'Please keep ' + money(o.total) + ' ready to pay when your books arrive.' : 'Your demo card payment was recorded and the order is confirmed.');
+      $('receipt').innerHTML =
+        '<div class="receipt-mark" aria-hidden="true"><svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>' +
+        '<h3>Thank you, ' + esc(o.name.split(' ')[0]) + '!</h3>' +
+        '<p class="muted">' + esc(note) + '</p>' +
+        '<dl class="receipt-meta">' +
+          '<div><dt>Order ID</dt><dd>' + esc(o.id) + '</dd></div>' +
+          '<div><dt>Date</dt><dd>' + esc(fmtDate(o.date)) + '</dd></div>' +
+          '<div><dt>Payment</dt><dd>' + esc(methodText(o)) + '</dd></div>' +
+          '<div><dt>Status</dt><dd>' + statusBadge(orderStatus(o)) + '</dd></div>' +
+        '</dl>' +
+        '<ul class="order-items">' + o.items.map(function (i) {
+          return '<li><span>' + esc(i.title) + ' × ' + i.qty + '</span><span>' + money(i.price * i.qty) + '</span></li>';
+        }).join('') + '</ul>' +
+        '<dl class="totals"><div><dt>Subtotal</dt><dd>' + money(o.subtotal) + '</dd></div>' +
+          '<div><dt>Discount</dt><dd>−' + money(o.discount) + '</dd></div>' +
+          '<div class="grand"><dt>Total</dt><dd>' + money(o.total) + '</dd></div></dl>' +
+        '<p class="receipt-ship"><strong>Shipping to:</strong> ' + esc(o.name) + ', ' + esc(o.phone) + '<br>' +
+          esc(o.address).replace(/\n/g, '<br>') + ' – ' + esc(o.pin) + '</p>';
+    }
+
+    function placeOrder() {
+      if (checkout.busy) { return; }
+      var method = selectedMethod(), utr = '', last4 = '';
+      PAY_IDS.forEach(function (id) { setErr($(id), ''); });
+      if (method === 'upi') {
+        var u = $('utr');
+        utr = u.value.trim();
+        if (!/^\d{12}$/.test(utr)) { setErr(u, 'Enter the 12-digit UTR shown in your UPI app after paying.'); shake(payForm); toast('Enter your 12-digit UTR number.'); return; }
+        if (getOrders().some(function (o) { return o.utr === utr; })) { setErr(u, 'This UTR was already used on another order.'); shake(payForm); toast('This UTR is already used.'); return; }
+      }
+      if (method === 'card') {
+        if (!validateCard()) { shake(payForm); toast('Please fix the card details.'); return; }
+        last4 = $('cardNumber').value.replace(/\D/g, '').slice(-4);
+      }
+      setBusy(true);
+      setTimeout(function () {
+        var sess = getSession();
+        var lines = getCart();
+        if (!lines.length) {
+          setBusy(false);
+          toast('Your cart is empty.');
+          closeCheckout();
+          return;
+        }
+        var t = totals(lines), ship = checkout.ship;
+        var newId = checkout.orderId;
+        if (getOrders().some(function (o) { return o.id === newId; })) { newId = nextOrderId(); }
+        var order = {
+          id: newId, email: sess ? sess.email : ship.email, shipEmail: ship.email, guest: !sess, deviceId: getDeviceId(),
+          name: ship.name, phone: ship.phone, address: ship.address, pin: ship.pin,
+          date: new Date().toISOString(),
+          items: lines.map(function (l) { return { id: l.product.id, title: l.product.title, qty: l.qty, price: l.product.salePrice }; }),
+          subtotal: t.subtotal, discount: t.discount, total: t.total,
+          method: method, utr: utr, cardLast4: last4,
+          status: method === 'card' ? 'confirmed' : 'pending',
+          paymentVerified: method === 'card'
+        };
+        var orders = getOrders();
+        orders.push(order);
+        if (!write(KEY.orders, orders)) {
+          setBusy(false);
+          toast('The order could not be saved. Allow site data and try again.');
+          return;
+        }
+        write(KEY.cart, []);
+        write(KEY.coupon, '');
+        payForm.reset();
+        setBusy(false);
+        renderCart();
+        renderReceipt(order);
+        setStep(2);
+        toast('Order placed! ID ' + order.id);
+      }, method === 'card' ? 1600 : 900);
+    }
+    payForm.addEventListener('submit', function (e) { e.preventDefault(); placeOrder(); });
+
+    $('viewOrdersBtn').addEventListener('click', function () { closeCheckout(); openOrders(); });
+    $('continueBtn').addEventListener('click', function () { closeCheckout(); toast('Happy reading!'); });
+
+    /* My orders */
+    var ordersSnap = '';
+    function renderMyOrders() {
+      ordersSnap = rawOrders();
+      var sess = getSession(), list = $('ordersList');
+      var note = sess ? '' : '<p class="muted small orders-note">Showing orders placed on this device. Login to see the orders linked to your account.</p>';
+      var mine = ordersForViewer().sort(function (a, b) { return new Date(b.date) - new Date(a.date); });
+      if (!mine.length) {
+        list.innerHTML = note + '<p class="orders-empty">' + (sess ? 'You have not placed any orders yet.' : 'No orders from this device yet.') + '</p>';
+        return;
+      }
+      list.innerHTML = note + mine.map(function (o) {
+        var verified = o.paymentVerified ? '<span class="pill in">Payment verified</span>' : (o.method === 'cod' ? '' : '<span class="pill out">Awaiting verification</span>');
+        var ref = o.method === 'upi' && o.utr ? '<span class="order-ref">UTR ' + esc(o.utr) + '</span>' : (o.method === 'card' && o.cardLast4 ? '<span class="order-ref">Card ending ' + esc(o.cardLast4) + '</span>' : '');
+        return '<article class="order-card">' +
+          '<div class="order-top"><div><strong class="order-id">' + esc(o.id) + '</strong><span class="order-date">' + esc(fmtDate(o.date)) + '</span></div>' + statusBadge(orderStatus(o)) + '</div>' +
+          '<ul class="order-items">' + (o.items || []).map(function (i) {
+            return '<li><span>' + esc(i.title) + ' × ' + esc(i.qty) + '</span><span>' + money(i.price * i.qty) + '</span></li>';
+          }).join('') + '</ul>' +
+          '<div class="order-bottom"><div><span class="order-method">' + esc(methodText(o)) + '</span>' + ref + verified + '</div>' +
+          '<span class="order-total">' + money(o.total) + '</span></div></article>';
+      }).join('');
+    }
+
+    function openOrders() {
+      if (drawer.classList.contains('open')) { closeCart(); }
+      lastFocus = document.activeElement;
+      renderMyOrders();
+      oDrawer.classList.add('open');
+      overlay.classList.add('open');
+      oDrawer.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+      $('closeOrders').focus();
+    }
+    function closeOrders() {
+      if (!oDrawer.classList.contains('open')) { return; }
+      oDrawer.classList.remove('open');
+      overlay.classList.remove('open');
+      oDrawer.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+      if (lastFocus && lastFocus.focus) { lastFocus.focus(); }
+    }
+    $('ordersBtn').addEventListener('click', openOrders);
+    $('closeOrders').addEventListener('click', closeOrders);
+    setInterval(function () {
+      if (oDrawer.classList.contains('open') && rawOrders() !== ordersSnap) { renderMyOrders(); }
+    }, 3000);
+
     /* Keep the store in sync when the admin changes data in another tab */
     window.addEventListener('storage', function (e) {
       if (e.key === null || e.key === KEY.products || e.key === KEY.offer || e.key === KEY.cart || e.key === KEY.coupon || e.key === KEY.session) {
@@ -530,6 +879,8 @@
         renderCart();
         updateAuthButton();
       }
+      if ((e.key === null || e.key === KEY.orders || e.key === KEY.session) && oDrawer.classList.contains('open')) { renderMyOrders(); }
+      if ((e.key === null || e.key === KEY.settings) && cModal.classList.contains('open') && !$('stepPay').hidden && selectedMethod() === 'upi') { refreshUpi(); }
     });
 
     renderProducts();
@@ -961,6 +1312,142 @@
       toast(saved.active ? 'Offer applied. It is live in the store.' : 'Offer saved. It is inactive.');
     });
 
+    /* Tabs */
+    var tabBtns = Array.prototype.slice.call(document.querySelectorAll('.atab'));
+    var panels = { products: $('panelProducts'), orders: $('panelOrders'), payments: $('panelPayments') };
+    function showTab(name) {
+      if (!panels[name]) { name = 'products'; }
+      tabBtns.forEach(function (b) { b.setAttribute('aria-selected', String(b.getAttribute('data-tab') === name)); });
+      Object.keys(panels).forEach(function (k) { panels[k].hidden = k !== name; });
+      if (name === 'orders') { renderOrders(); }
+      if (name === 'payments') { renderSettings(); }
+    }
+    tabBtns.forEach(function (b) {
+      b.addEventListener('click', function () {
+        var name = b.getAttribute('data-tab');
+        showTab(name);
+        try { history.replaceState(null, '', '#' + name); } catch (e) { /* ignore */ }
+      });
+    });
+
+    /* Orders */
+    var ordersSnap = rawOrders();
+    var orderBody = $('orderRows'), orderFilter = $('orderFilter');
+    function updateOrderBadge(all) {
+      var n = all.filter(function (o) { return orderStatus(o) === 'pending'; }).length;
+      $('orderBadge').textContent = n;
+      $('orderBadge').hidden = n === 0;
+    }
+    function renderOrders() {
+      ordersSnap = rawOrders();
+      var all = getOrders();
+      updateOrderBadge(all);
+      $('orderCount').textContent = all.length;
+      var f = orderFilter.value;
+      var list = all.filter(function (o) { return f === 'all' || orderStatus(o) === f; })
+        .sort(function (a, b) { return new Date(b.date) - new Date(a.date); });
+      if (!list.length) {
+        orderBody.innerHTML = '<tr class="empty-row"><td colspan="8">' + (all.length ? 'No orders with this status.' : 'No orders yet. New orders will appear here.') + '</td></tr>';
+        return;
+      }
+      orderBody.innerHTML = list.map(function (o) {
+        var st = orderStatus(o), id = esc(o.id);
+        var options = STATUSES.map(function (v) { return '<option value="' + v + '"' + (v === st ? ' selected' : '') + '>' + STATUS_LABEL[v] + '</option>'; }).join('');
+        var ref = o.method === 'upi' ? '<span class="cell-sub">UTR: ' + esc(o.utr || 'not given') + '</span>' : (o.method === 'card' && o.cardLast4 ? '<span class="cell-sub">Card ending ' + esc(o.cardLast4) + '</span>' : '');
+        return '<tr>' +
+          '<td><span class="cell-title">' + id + '</span><span class="cell-sub">' + esc(fmtDate(o.date)) + '</span></td>' +
+          '<td><span class="cell-title">' + esc(o.name || 'Not given') + '</span><span class="cell-sub">' + esc(o.phone || '') + '</span><span class="cell-sub">' + esc(o.shipEmail || o.email || '') + '</span>' + (o.guest ? '<span class="cell-sub">Guest checkout</span>' : '') + '</td>' +
+          '<td class="cell-wrap">' + esc(o.address || 'Not given').replace(/\n/g, '<br>') + (o.pin ? '<span class="cell-sub">PIN ' + esc(o.pin) + '</span>' : '') + '</td>' +
+          '<td><ul class="mini-list">' + (o.items || []).map(function (i) { return '<li>' + esc(i.title) + ' × ' + esc(i.qty) + '</li>'; }).join('') + '</ul></td>' +
+          '<td><span class="price">' + money(o.total) + '</span>' + (o.discount > 0 ? '<span class="cell-sub">after −' + money(o.discount) + '</span>' : '') + '</td>' +
+          '<td><span class="cell-title">' + esc(methodText(o)) + '</span>' + ref +
+            '<label class="switch switch-sm"><input type="checkbox" role="switch" data-pay="' + id + '"' + (o.paymentVerified ? ' checked' : '') + '><span class="slider" aria-hidden="true"></span><span class="switch-text">' + (o.paymentVerified ? 'Payment verified' : 'Not verified') + '</span></label></td>' +
+          '<td><select class="status-select st-' + st + '" data-status="' + id + '" aria-label="Order status for ' + id + '">' + options + '</select></td>' +
+          '<td><button class="btn btn-danger btn-sm" type="button" data-del="' + id + '">Delete</button></td></tr>';
+      }).join('');
+    }
+    function updateOrder(id, change, message) {
+      var all = getOrders();
+      var o = all.filter(function (x) { return x.id === id; })[0];
+      if (!o) { renderOrders(); return; }
+      change(o);
+      if (!write(KEY.orders, all)) { toast('The change could not be saved. Try again.'); renderOrders(); return; }
+      renderOrders();
+      toast(message(o));
+    }
+    orderBody.addEventListener('change', function (e) {
+      var sel = e.target.closest('[data-status]');
+      if (sel) {
+        var v = sel.value;
+        updateOrder(sel.getAttribute('data-status'), function (o) { o.status = v; }, function (o) { return 'Order ' + o.id + ' marked ' + STATUS_LABEL[v] + '.'; });
+        return;
+      }
+      var chk = e.target.closest('[data-pay]');
+      if (chk) {
+        var on = chk.checked;
+        updateOrder(chk.getAttribute('data-pay'), function (o) { o.paymentVerified = on; }, function (o) { return 'Payment ' + (on ? 'verified' : 'marked not verified') + ' for ' + o.id + '.'; });
+      }
+    });
+    orderBody.addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-del]');
+      if (!btn) { return; }
+      var id = btn.getAttribute('data-del');
+      if (!window.confirm('Delete order ' + id + '? This cannot be undone.')) { return; }
+      var next = getOrders().filter(function (x) { return x.id !== id; });
+      if (!write(KEY.orders, next)) { toast('The order could not be deleted. Try again.'); return; }
+      renderOrders();
+      toast('Order deleted: ' + id);
+    });
+    orderFilter.addEventListener('change', function () {
+      renderOrders();
+      toast(this.value === 'all' ? 'Showing all orders.' : 'Showing ' + STATUS_LABEL[this.value] + ' orders.');
+    });
+    window.addEventListener('storage', function (e) {
+      if (e.key === null || e.key === KEY.orders) { renderOrders(); }
+    });
+
+    setInterval(function () {
+      if (rawOrders() === ordersSnap) { return; }
+      if (panels.orders.hidden) { ordersSnap = rawOrders(); updateOrderBadge(getOrders()); } else { renderOrders(); }
+    }, 3000);
+
+    /* Payment settings */
+    var settingsForm = $('settingsForm');
+    function renderSettings() {
+      var st = getSettings();
+      $('sUpi').value = st.upiId;
+      $('sPayee').value = st.payee;
+      showQr(st);
+    }
+    function showQr(st) {
+      var img = $('settingsQr');
+      img.hidden = false;
+      delete img.dataset.tried;
+      $('settingsQrFallback').hidden = true;
+      img.src = qrUrl(upiUri(st, 0, ''), 220);
+    }
+    $('settingsQr').addEventListener('error', function () {
+      if (!this.dataset.tried) { this.dataset.tried = '1'; this.src = qrFallbackUrl(upiUri(getSettings(), 0, ''), 220); return; }
+      this.hidden = true;
+      $('settingsQrFallback').hidden = false;
+    });
+    settingsForm.addEventListener('input', function (e) { if (e.target.closest('.field')) { setErr(e.target, ''); } });
+    settingsForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var u = $('sUpi'), p = $('sPayee'), ok = true;
+      [u, p].forEach(function (el) { setErr(el, ''); });
+      var upi = u.value.trim(), payee = p.value.trim();
+      if (!UPI_RE.test(upi)) { setErr(u, 'Enter a valid UPI ID, like name@bankname.'); ok = false; }
+      if (payee.length < 2 || payee.length > 40) { setErr(p, 'Enter a payee name of 2 to 40 characters.'); ok = false; }
+      if (!ok) { shake(settingsForm); toast('Please fix the highlighted fields.'); return; }
+      var saved = { upiId: upi, payee: payee };
+      if (!write(KEY.settings, saved)) { toast('The settings could not be saved. Allow site data and try again.'); return; }
+      showQr(saved);
+      toast('Payment settings saved. The checkout QR code is updated.');
+    });
+
+    updateOrderBadge(getOrders());
+    showTab(location.hash.slice(1));
     fillOffer(getOffer());
     previewOffer();
     render();
@@ -968,6 +1455,7 @@
 
   /* ---------- Start ---------- */
   function start() {
+    migrateOrders();
     getProducts();
     initCommon();
     if ($('productGrid') && $('cartDrawer')) { initStore(); }
