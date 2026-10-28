@@ -42,6 +42,14 @@
     <p class="muted">Add books, update prices and stock, and control the store-wide offer.</p>
   </div>
 
+
+  <nav class="admin-tabs" role="tablist" aria-label="Dashboard sections">
+    <button class="atab" id="atabProducts" type="button" role="tab" aria-selected="true" aria-controls="panelProducts" data-tab="products">Products and offers</button>
+    <button class="atab" id="atabOrders" type="button" role="tab" aria-selected="false" aria-controls="panelOrders" data-tab="orders">Manage orders <span class="count-badge" id="orderBadge" hidden>0</span></button>
+    <button class="atab" id="atabPayments" type="button" role="tab" aria-selected="false" aria-controls="panelPayments" data-tab="payments">Payment settings</button>
+  </nav>
+
+  <div class="admin-panel" id="panelProducts" role="tabpanel" aria-labelledby="atabProducts">
   <section class="panel" aria-labelledby="formTitle">
     <h2 id="formTitle">Add a product</h2>
     <form id="productForm" novalidate>
@@ -165,6 +173,73 @@
       <p class="muted small">Changes go live in the store when you save.</p>
     </form>
   </section>
+  </div>
+
+  <div class="admin-panel" id="panelOrders" role="tabpanel" aria-labelledby="atabOrders" hidden>
+    <section class="panel" aria-labelledby="ordersTitle">
+      <div class="toolbar">
+        <h2 id="ordersTitle">Manage orders <span class="count-badge" id="orderCount">0</span></h2>
+        <select id="orderFilter" aria-label="Filter orders by status">
+          <option value="all">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="confirmed">Confirmed</option>
+          <option value="shipped">Shipped</option>
+          <option value="delivered">Delivered</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table class="orders-table">
+          <thead>
+            <tr>
+              <th scope="col">Order</th>
+              <th scope="col">Customer</th>
+              <th scope="col">Shipping address</th>
+              <th scope="col">Items</th>
+              <th scope="col">Total</th>
+              <th scope="col">Payment</th>
+              <th scope="col">Status</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="orderRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <div class="admin-panel" id="panelPayments" role="tabpanel" aria-labelledby="atabPayments" hidden>
+    <section class="panel" aria-labelledby="payTitle">
+      <h2 id="payTitle">Payment settings</h2>
+      <form id="settingsForm" novalidate>
+        <div class="settings-grid">
+          <div>
+            <div class="field">
+              <label for="sUpi">UPI ID</label>
+              <input type="text" id="sUpi" placeholder="name@bankname" maxlength="80" autocomplete="off" autocapitalize="none" spellcheck="false">
+              <p class="field-error"></p>
+            </div>
+            <div class="field">
+              <label for="sPayee">Payee name shown in UPI apps</label>
+              <input type="text" id="sPayee" placeholder="Mr. Singh Publications" maxlength="40">
+              <p class="field-error"></p>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-gold" type="submit">Save settings</button>
+            </div>
+            <p class="muted small">The checkout QR code uses this UPI ID and updates as soon as you save.</p>
+          </div>
+          <div class="qr-preview">
+            <div class="qr-frame">
+              <img id="settingsQr" alt="Preview of the UPI QR code shown at checkout" width="220" height="220">
+              <p class="qr-fallback" id="settingsQrFallback" hidden>The QR preview could not load. Check your internet connection.</p>
+            </div>
+            <p class="muted small">Preview of the code customers scan.</p>
+          </div>
+        </div>
+      </form>
+    </section>
+  </div>
 </main>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
