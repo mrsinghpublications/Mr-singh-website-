@@ -2564,5 +2564,67 @@ resetSamples = function(){
    removes the Firestore doc; Reset now clears ALL books incl. backend docs).
    Backup: index-v14.html. sw.js cache msp-v14 -> msp-v15. */
 </script>
+<script>
+/* ================= v16: backend is the source of truth — 2026-11-15 =================
+   BUG (found 2026-11-15, 08:24 IST): deleting the 2 books from Firestore did NOT
+   empty the store. Every storefront load re-created them, because the v13 merge
+   did this when Firestore was empty: "if(snap.empty){ await syncAllBooksToFirestore(); }"
+   — it pushed the WHOLE local book list back into Firestore. That local list comes
+   from the browser's own localStorage, which still held the 2 old books from an
+   earlier visit (same on the owner's phone/PC). So console deletion could never stick.
+   FIX: Firestore is now the source of truth.
+   - If Firestore is EMPTY, the store is EMPTY: local books are dropped (never pushed
+     back). Only seed books (currently NONE) and books created in the last 60 seconds
+     (just added, sync may still be in flight) are kept and pushed.
+   - If Firestore HAS books, only those are used. Local-only books are NOT merged back
+     in, except books created in the last 60s (same just-added grace period).
+   This keeps the v14 promise (Add/Edit/Delete auto-save to Firestore) while making
+   a backend deletion FINAL. A book added via Admin still saves to Firestore at once
+   (saveBooks wrapper) and shows up on every device; deleting it in Admin (v14) or
+   in the console now removes it everywhere for good.
+   Backup: index-v15.html. sw.js cache msp-v15 -> msp-v16. */
+loadBooksFromFirestore = async function(){
+  if(!firestoreOn()) return;
+  try{
+    const snap=await db.collection('books').get();
+    const now=Date.now();
+    const isFresh=function(b){ return b && b.id && b.created && (now-b.created)<60000; };
+    if(snap.empty){
+      const seeds=(typeof SEED_BOOKS!=='undefined') ? SEED_BOOKS.map(function(s){ return Object.assign({}, s); }) : [];
+      const keep={}; const out=[];
+      seeds.concat((books||[]).filter(isFresh)).forEach(function(b){ if(b && b.id && !keep[b.id]){ keep[b.id]=1; out.push(b); } });
+      books=out; saveBooks(); renderBooks(); renderPills();
+      if(!document.getElementById('adminPanel').classList.contains('hidden')) renderAdmin();
+      return;
+    }
+    const remote=[]; snap.forEach(function(d){ const b=d.data(); if(b && b.title) remote.push(b); });
+    if(!remote.length) return;
+    const byId={}; remote.forEach(function(b){ byId[b.id]=b; });
+    const merged=remote.map(function(b){
+      const seed=(typeof SEED_BOOKS!=='undefined') ? SEED_BOOKS.find(function(s){ return s.id===b.id; }) : null;
+      const out=Object.assign({cover:(typeof FALLBACK_COVER!=='undefined'?FALLBACK_COVER:''), deliveryUrl:'', printLink:'', printPlatform:'Amazon', bestseller:false}, b);
+      if(seed){
+        const fb=(typeof FALLBACK_COVER!=='undefined'?FALLBACK_COVER:'');
+        if(!out.cover || out.cover===fb || (out.cover||'').indexOf('images/bpsc-history-cover.png')!==-1) out.cover=seed.cover||out.cover;
+        if(!out.deliveryUrl && seed.deliveryUrl) out.deliveryUrl=seed.deliveryUrl;
+        if(!out.desc && seed.desc) out.desc=seed.desc;
+      }
+      return out;
+    });
+    (books||[]).forEach(function(b){ if(isFresh(b) && !byId[b.id]) merged.push(b); });
+    if(typeof SEED_BOOKS!=='undefined'){
+      SEED_BOOKS.forEach(function(s){ if(!byId[s.id] && !merged.some(function(m){ return m.id===s.id; })) merged.push(Object.assign({}, s)); });
+    }
+    books=merged; saveBooks(); renderBooks(); renderPills();
+    if(!document.getElementById('adminPanel').classList.contains('hidden')) renderAdmin();
+  }catch(e){}
+};
+if(typeof firestoreOn==='function' && firestoreOn()){ try{ loadBooksFromFirestore(); }catch(e){} }
+setTimeout(function(){ if(typeof firestoreOn==='function' && firestoreOn()){ try{ loadBooksFromFirestore(); }catch(e){} } }, 4000);
+if(typeof handleFirebaseUser==='function'){
+  const _v15handleFirebaseUser = handleFirebaseUser;
+  handleFirebaseUser = function(u, m){ _v15handleFirebaseUser(u, m); setTimeout(function(){ if(typeof firestoreOn==='function' && firestoreOn()){ try{ loadBooksFromFirestore(); }catch(e){} } }, 1500); };
+}
+</script>
 </body>
 </html>
