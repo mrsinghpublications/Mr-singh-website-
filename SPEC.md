@@ -75,3 +75,13 @@ Single source of truth for every rule set so far. The live file is `index.html` 
 - Push notifications (Admin Tab 6): title + message likh kar sabhi users ko in-app notification (bell icon + badge). New book add hote hi automatic "New Book" notification. Asli push (locked phone) ke liye FCM VAPID key field + Enable Push button + sw.js push/notificationclick handlers; broadcast server key se hota hai jo is file me nahi dala ja sakta.
 - New tag: Add/Edit me "Mark as NEW" checkbox — card par NEW badge. Category: Add/Edit me dropdown + "New category" text field.
 - Cover fix: sab cover images ab object-fit:contain (cream background) — cover ka koi part cut nahi hota.
+
+## v9 — Cloud Settings (Firebase) — 2026-11-15
+Problem: books/orders already synced to Firestore, but SETTINGS (Firebase config, Cashfree App ID, EmailJS keys, VAPID key, admin email) lived only in that browser's LocalStorage. On a new phone/computer the Admin panel had no config, so Google Admin login failed and all keys had to be re-entered.
+Fix:
+- Firebase web config embedded in index.html as DEFAULT_FIREBASE_CONFIG (public browser key, not a secret — safe to expose). Any device boots into Live Firebase mode with no paste needed.
+- Settings saved to Firestore doc `config/settings` (write needs a Firebase-signed-in user, i.e. Google Admin login) and loaded from there on every start (cloud updatedAt wins; empty cloud values never wipe local values). New "Sync Settings to Cloud" button + status line in Admin Tab 3.
+- Admin password is NOT in settings (separate LocalStorage key) and is never synced. No Secret Key is ever stored.
+- Requires: Firestore Database created in Firebase Console + rules (read all, write only signed-in users) for collections books, orders, ebookRequests, customers, config.
+- sw.js cache bumped msp-v8 → msp-v9 so devices fetch the new file.
+- Backup: index-v8.html beside index.html. All 9 inline scripts pass node --check, zero TODOs.
