@@ -1,5 +1,5 @@
-/* Mr Singh Publications — Service Worker (PWA offline shell) */
-const CACHE = 'msp-v6';
+/* Mr Singh Publications — Service Worker (PWA offline shell + push) */
+const CACHE = 'msp-v8';
 const CORE = ['index.html', 'logo.png', 'icon.jpg', 'manifest.json'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).catch(() => {}));
@@ -22,4 +22,23 @@ self.addEventListener('fetch', (e) => {
       }).catch(() => caches.match('index.html')))
     );
   }
+});
+/* Push notifications (FCM): shows the notification even when the site is closed. */
+self.addEventListener('push', (e) => {
+  let data = { title: 'Mr Singh Publications', body: 'Aapke liye ek nayi khabar hai!' };
+  try { if (e.data) data = Object.assign(data, e.data.json()); } catch (_) {}
+  e.waitUntil(self.registration.showNotification(data.title, {
+    body: data.body,
+    icon: 'icon.jpg',
+    badge: 'icon.jpg',
+    tag: 'msp-notif',
+    data: { url: data.url || '/' }
+  }));
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+    for (const c of list) { if ('focus' in c) return c.focus(); }
+    if (clients.openWindow) return clients.openWindow(e.notification.data.url || '/');
+  }));
 });

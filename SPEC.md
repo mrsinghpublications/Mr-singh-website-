@@ -59,3 +59,19 @@ Single source of truth for every rule set so far. The live file is `index.html` 
 - Real selling prices — Admin Tab 1 (current prices are samples).
 - Kaidi ISBN when allotted — Admin Tab 1.
 - Host rule for the App User-Agent 403 (see README.md) + DNS/hosting for mrsinghpublications.isroot.in.
+
+## v7 (2026-11-15)
+- Payment Gateway API Keys (Admin Tab 3, optional, link still optional): Razorpay Key ID (public, rzp_live_/rzp_test_) + Cashfree App ID/Client ID (public). Secret Key is NEVER entered/saved here — a public single file cannot keep a secret; secret belongs on a backend only.
+- Razorpay Checkout (checkout.razorpay.com SDK): if gateway=Razorpay, no payment link, and Key ID is set, Buy Now shows "Pay with Razorpay" in-app checkout (amount = book price, UPI/card/net-banking); on success confirmOrder runs and the eBook + password are delivered. If a payment link exists, the link wins. Cashfree App ID alone cannot open in-app checkout (needs server session_id) — Cashfree still uses the payment link.
+- Firebase login/OTP fixes: "Live" badge no longer lies — Diagnose button (Admin Tab 3) checks SDK, config, domain vs authDomain and lists the Console checks (Google + Phone must be Enabled; domain must be in Authorized domains). Google login: popup, then redirect fallback on popup-blocked/closed, with plain-language error + exact fix. Phone OTP: fresh rendered reCAPTCHA per attempt, cleared on error. Errors shown in #fbDiag (auth modal) and #fbDiagAdmin (Tab 3). Email OTP note: Firebase never sends OTP to email — email users use password/Google; real OTP is phone-only.
+
+## v8 (2026-11-15)
+- Free eBooks: price 0 ya khali => book automatic Free eBook (FREE badge, "Get Free eBook" button, alag Free eBooks section + Free eBooks pill). Free book login ke baad Library me add hota hai, sirf app/website reader me padha ja sakta hai — download aur email delivery dono band hain (downloadEbook / requestEbookEmail free orders par rokte hain).
+- Login gate: bina login ke koi book buy/read nahi kar sakta — Buy/Read dabane par login screen khulti hai; login ke baad hi profile setup, buy, read, Library.
+- My Library (header button + profile): customer ki kharidi hui + free books, Read Now (sab), Download (sirf paid).
+- Profile setup (My Profile → Edit Profile): DP photo upload (200×200 crop, <2 MB), naam, mobile, email, gender, Exam Preparation (BPSC/UPSC/SSC/Banking/Railway/UPPSC/MPPSC/BSSC/NEET/JEE/CTET-STET/Defence/Other/Not preparing), address.
+- Coupons (Admin Tab 5): code generate — % ya flat discount, min books, min order amount, expiry, max uses, active/inactive, delete. Checkout me coupon input + Apply; discount in-app Razorpay par lagta hai, payment link par full price (wahan note dikhta hai). Bulk discount (Tab 5): 2nd book se X%, 3rd se Y% — automatic, bina coupon ke.
+- Customer Details (Admin Tab 4, neeche): DP, naam, email, mobile, gender, exam, address, joined, books, total spent. **Passwords kabhi nahi dikhaye jate** — hash hokar save hote hain, admin bhi nahi dekh sakta. Data sirf is browser/device ke customers ka hai (Firestore sync ON ho to wahan ke bhi).
+- Push notifications (Admin Tab 6): title + message likh kar sabhi users ko in-app notification (bell icon + badge). New book add hote hi automatic "New Book" notification. Asli push (locked phone) ke liye FCM VAPID key field + Enable Push button + sw.js push/notificationclick handlers; broadcast server key se hota hai jo is file me nahi dala ja sakta.
+- New tag: Add/Edit me "Mark as NEW" checkbox — card par NEW badge. Category: Add/Edit me dropdown + "New category" text field.
+- Cover fix: sab cover images ab object-fit:contain (cream background) — cover ka koi part cut nahi hota.
