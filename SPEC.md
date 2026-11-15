@@ -106,3 +106,16 @@ Fix: the button now opens a small panel with three ways that always work — 1. 
 Root cause of the v11 self-heal failure: the v11 override of loadBooksFromFirestore was defined AFTER the v9 block's immediate initFirebase() call, so on every page load the ORIGINAL version ran (replace books with Firestore docs, no seed merge) and the override was never invoked. "Reset to the 2 sample books" also did nothing in the cloud browser because resetSamples() uses confirm(), which that browser auto-dismisses (works in a real browser).
 Fix: the merge is redefined here (last definition wins) and INVOKED on load, retried after 4s (Firebase Auth restores async; the push needs a signed-in admin), and re-run 1.5s after every Firebase sign-in. Cover fix in the same merge: a seed book whose stored cover is empty, the generic fallback SVG, or the broken /images/bpsc-history-cover.png URL (404) now gets the seed's real embedded cover art back — both cards show their real covers instead of the same gold placeholder.
 - Backup: index-v12.html. sw.js cache msp-v12 → msp-v13. All 12 inline scripts pass node --check, zero TODOs.
+
+## v14 — Backend auto-save complete (add/edit/delete) — 2026-11-15
+User requirement: books added on the website must AUTOMATICALLY save to the backend (Firestore).
+What already worked: saveBook() calls saveBooks(), whose wrapper calls syncAllBooksToFirestore() when Firestore is on — Add/Edit already pushed to Firestore (needs a signed-in admin, because Firestore rules only allow writes from an authenticated user).
+GAP FOUND: deleteBook() only removed the book locally. Sync only SETs docs for books still in the list, so a deleted book stayed in Firestore and came back on the next fresh load. Same gap in resetSamples().
+Fix: deleteBook() now also deletes the Firestore document; resetSamples() now deletes every Firestore book doc that is not one of the 2 seed books.
+- Backup: index-v13.html. sw.js cache msp-v13 → msp-v14. All 13 inline scripts pass node --check, zero TODOs.
+
+## v15 — Store emptied, owner adds books himself — 2026-11-15
+User: "Jo book upload kiye ho hata do, wo mai krunga kyoki book me adhi edit krna baki hai."
+Change: SEED_BOOKS is now EMPTY — both sample books (BPSC History, Ahsason Ka Kaidi) removed from index.html (titles/covers/prices gone from the file). Storefront starts with 0 books. The 2 Firestore docs (b-bpsc-history, b-kaidi) were also deleted in the Firebase console, otherwise the v13 merge would load them back from the backend. Reset button relabelled "Reset store — remove all books" and its Firestore cleanup now runs even when the local list becomes empty.
+The owner adds books himself via Admin > Add Book after editing them; Add/Edit/Delete auto-save to Firestore (v14 fix included).
+- Backup: index-v14.html. sw.js cache msp-v14 → msp-v15. All 14 inline scripts pass node --check, zero TODOs.
