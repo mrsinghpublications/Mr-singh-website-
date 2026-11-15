@@ -1,0 +1,223 @@
+/**
+ * Mr Singh Publications — Cashfree Dynamic Payment Links (Firebase Cloud Function)
+ * =================================================================================
+ * Function: createCashfreeLink (callable, region asia-south1)
+ *
+ * Frontend se bookId + optional couponCode aata hai. Ye function:
+ *   1. Book ki price Firestore se leta hai (server source of truth — client
+ *      jo price bheje us par bharosa nahi kiya jata).
+ *   2. User ke pehle ke orders gin kar bulk discount lagata hai
+ *      (2nd book X%, 3rd book Y% — Admin Tab 5 ke bulk settings se).
+ *   3. Coupon code Firestore `coupons` collection se validate karta hai
+ *      (active / expiry / maxUses / minAmount / minBooks).
+ *   4. Final amount par Cashfree Payment Links API se ek FRESH dynamic link
+ *      banata hai (har order ke liye alag link_id).
+ *   5. Firestore `orders` me ek pending order likhta hai, taaki payment ke
+ *      baad return par store use confirm kar sake.
+ *   6. { link_url, order_id, amount } wapas bhejta hai — frontend user ko
+ *      Cashfree ke secure page par redirect kar deta hai.
+ *
+ * SECURITY: Cashfree Secret Key yahan code me NAHI hai. Wo Firebase Secret
+ * Manager me hai (CASHFREE_CLIENT_SECRET) aur sirf server par milti hai.
+ * Client ID (App ID) public hai — wo Firestore config/settings se liya jata hai.
+ *
+ * IMPORTANT — Blaze plan: Spark (free) plan par Cloud Function sirf Google
+ * services ko call kar sakta hai. Cashfree (non-Google) ko call karne ke liye
+ * Firebase project ko Blaze (pay-as-you-go) par upgrade karna ZAROORI hai.
+ * Bina Blaze ke ye function deploy ho jayega par Cashfree call fail hogi.
+ * Deploy steps: functions/DEPLOY_GUIDE.md dekhein.
+ */
+
+const {onCall, HttpsError} = require("firebase-functions/v2/https");
+const {defineSecret, defineString} = require("firebase-functions/params");
+const admin = require("firebase-admin");
+
+admin.initializeApp();
+const db = admin.firestore();
+
+// Secret Manager secrets (deploy se pehle set karein — DEPLOY_GUIDE.md):
+//   firebase functions:secrets:set CASHFREE_CLIENT_SECRET
+const CASHFREE_CLIENT_SECRET = defineSecret("CASHFREE_CLIENT_SECRET");
+// "live" (asli payments) ya "sandbox" (test payments). Default: live.
+const CASHFREE_ENV = defineString("CASHFREE_ENV", {default: "live"});
+
+const STORE_URL = "https://mrsinghpublications.isroot.in";
+
+function cfBase(env) {
+  return env === "sandbox" ? "https://sandbox.cashfree.com" : "https://api.cashfree.com";
+}
+
+exports.createCashfreeLink = onCall(
+  {
+    region: "asia-south1",
+    secrets: [CASHFREE_CLIENT_SECRET],
+    cors: true,
+  },
+  async (request) => {
+    // 0. Login zaroori hai (store par bina login ke buy nahi hota).
+    const uid = request.auth && request.auth.uid;
+    if (!uid) {
+      throw new HttpsError("unauthenticated", "Please login first.");
+    }
+    const data = request.data || {};
+    const bookId = String(data.bookId || "").trim();
+    const couponCode = String(data.couponCode || "").trim().toUpperCase();
+    if (!bookId) {
+      throw new HttpsError("invalid-argument", "bookId is required.");
+    }
+
+    // 1. Book — price + live status Firestore se (server source of truth).
+    const bookSnap = await db.collection("books").doc(bookId).get();
+    if (!bookSnap.exists) {
+      throw new HttpsError("not-found", "Book not found.");
+    }
+    const book = bookSnap.data();
+    if (book.status !== "live") {
+      throw new HttpsError("failed-precondition", "This book is not live yet.");
+    }
+    const base = Number(book.price || 0);
+    if (!(base >= 0)) {
+      throw new HttpsError("invalid-argument", "Invalid book price.");
+    }
+
+    // 2. Bulk discount — user ke CONFIRMED orders gine jate hain.
+    const ordersSnap = await db.collection("orders").where("userId", "==", uid).get();
+    let owned = 0;
+    ordersSnap.forEach((d) => {
+      const s = String((d.data() && d.data().status) || "");
+      if (s.indexOf("confirmed") !== -1 || s.indexOf("Free eBook") === 0) owned += 1;
+    });
+    let bulk2Pct = 0;
+    let bulk3Pct = 0;
+    try {
+      const cfgSnap = await db.collection("config").doc("settings").get();
+      const cfg = cfgSnap.exists ? cfgSnap.data() : {};
+      bulk2Pct = Number(cfg.bulk2Pct || 0);
+      bulk3Pct = Number(cfg.bulk3Pct || 0);
+    } catch (e) { /* bulk settings optional hain */ }
+    let bulkPct = 0;
+    if (owned + 1 >= 3 && bulk3Pct > 0) bulkPct = bulk3Pct;
+    else if (owned + 1 >= 2 && bulk2Pct > 0) bulkPct = bulk2Pct;
+    const bulkAmt = Math.round((base * bulkPct) / 100);
+
+    // 3. Coupon — Firestore `coupons` se validate (Admin Tab 5 ke coupons
+    //    yahan sync hote hain; bina sync ke coupon "not found" aayega).
+    let couponAmt = 0;
+    let coupon = null;
+    if (couponCode) {
+      const cSnap = await db.collection("coupons").doc(couponCode).get();
+      if (!cSnap.exists) {
+        throw new HttpsError("not-found", "Coupon code not found.");
+      }
+      const c = cSnap.data();
+      if (!c.active) {
+        throw new HttpsError("failed-precondition", "This coupon is inactive.");
+      }
+      if (c.expiry && new Date(c.expiry) < new Date()) {
+        throw new HttpsError("failed-precondition", "This coupon has expired.");
+      }
+      if (Number(c.maxUses) > 0 && Number(c.uses || 0) >= Number(c.maxUses)) {
+        throw new HttpsError("failed-precondition", "This coupon has reached its usage limit.");
+      }
+      if (Number(c.minAmount) > 0 && base < Number(c.minAmount)) {
+        throw new HttpsError("failed-precondition", "This coupon needs a minimum order of Rs " + c.minAmount + ".");
+      }
+      if (Number(c.minBooks) > 0 && owned + 1 < Number(c.minBooks)) {
+        throw new HttpsError("failed-precondition", "This coupon applies after buying " + c.minBooks + " books.");
+      }
+      coupon = {code: c.code || couponCode, type: c.type, value: Number(c.value || 0)};
+      couponAmt = c.type === "flat"
+        ? Math.min(Number(c.value || 0), base - bulkAmt)
+        : Math.round(((base - bulkAmt) * Number(c.value || 0)) / 100);
+    }
+
+    const amount = Math.max(0, base - bulkAmt - couponAmt);
+    if (amount === 0) {
+      return {free: true, amount: 0, order_id: null, link_url: null};
+    }
+
+    // 4. Customer details (login token se, kami ho to frontend se).
+    const auth = request.auth.token || {};
+    const customer = (data.customer && typeof data.customer === "object") ? data.customer : {};
+    const customerName = String(customer.name || auth.name || "Customer").slice(0, 100);
+    const customerEmail = String(customer.email || auth.email || "").slice(0, 100);
+    const customerPhone = String(customer.phone || auth.phone_number || "").replace(/\D/g, "").slice(-10);
+
+    // 5. Cashfree credentials — Secret Key sirf server par.
+    const env = (CASHFREE_ENV.value() || "live").toLowerCase() === "sandbox" ? "sandbox" : "live";
+    let clientId = "";
+    try {
+      const cfgSnap = await db.collection("config").doc("settings").get();
+      clientId = String((cfgSnap.exists ? cfgSnap.data().cfAppId : "") || "").trim();
+    } catch (e) { /* ignore */ }
+    const clientSecret = (CASHFREE_CLIENT_SECRET.value() || "").trim();
+    if (!clientId || !clientSecret) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Cashfree is not configured on the server yet (Client ID / Secret missing)."
+      );
+    }
+
+    // 6. Dynamic payment link banayein (har order ke liye alag link_id).
+    const orderId = "MSP-" + Date.now().toString(36).toUpperCase() + "-" +
+      Math.random().toString(36).slice(2, 6).toUpperCase();
+    const returnUrl = STORE_URL + "/?cf_return=1&order_id=" + encodeURIComponent(orderId);
+    const expiry = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const resp = await fetch(cfBase(env) + "/pg/links", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-client-id": clientId,
+        "x-client-secret": clientSecret,
+        "x-api-version": "2023-08-01",
+      },
+      body: JSON.stringify({
+        link_id: orderId,
+        link_amount: amount,
+        link_currency: "INR",
+        link_purpose: String(book.title || "eBook").slice(0, 100),
+        customer_details: {
+          customer_id: uid,
+          customer_name: customerName,
+          customer_email: customerEmail,
+          customer_phone: customerPhone,
+        },
+        link_notify: {send_sms: Boolean(customerPhone), send_email: Boolean(customerEmail)},
+        link_meta: {return_url: returnUrl, notify_url: ""},
+        link_expiry_time: expiry,
+      }),
+    });
+    const resJson = await resp.json().catch(() => ({}));
+    if (!resp.ok || !resJson.link_url) {
+      const msg = (resJson && (resJson.message || resJson.error)) || ("Cashfree error " + resp.status);
+      throw new HttpsError("internal", "Cashfree link nahi ban paya: " + String(msg).slice(0, 200));
+    }
+
+    // 7. Pending order likhein (return par confirm karne ke liye).
+    await db.collection("orders").doc(orderId).set({
+      id: orderId,
+      userId: uid,
+      bookId: book.id,
+      title: book.title || "",
+      price: amount,
+      originalPrice: base,
+      discountAmt: bulkAmt + couponAmt,
+      bulkPct: bulkPct,
+      couponCode: coupon ? coupon.code : "",
+      method: "cashfree-link",
+      status: "Payment link created — awaiting payment",
+      link_url: resJson.link_url,
+      date: new Date().toISOString(),
+    });
+
+    // 8. Coupon use gin lein (link banne ke baad hi).
+    if (coupon) {
+      try {
+        await db.collection("coupons").doc(coupon.code)
+          .update({uses: admin.firestore.FieldValue.increment(1)});
+      } catch (e) { /* ignore */ }
+    }
+
+    return {link_url: resJson.link_url, order_id: orderId, amount: amount};
+  }
+);
