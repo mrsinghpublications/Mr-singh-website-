@@ -1420,7 +1420,7 @@ async function loadBooksFromFirestore(){
   if(!firestoreOn()) return;
   try{
     const snap=await db.collection('books').get();
-    if(snap.empty){ await syncAllBooksToFirestore(); return; }
+    if(snap.empty){ const _now=Date.now(); const _fresh=function(b){ return b && b.id && b.created && (_now-b.created)<60000; }; const _seeds=(typeof SEED_BOOKS!=='undefined') ? SEED_BOOKS.map(function(s){ return Object.assign({}, s); }) : []; const _keep={}; const _out=[]; _seeds.concat((books||[]).filter(_fresh)).forEach(function(b){ if(b && b.id && !_keep[b.id]){ _keep[b.id]=1; _out.push(b); } }); books=_out; saveBooks(); renderBooks(); renderPills(); return; }
     const remote=[]; snap.forEach(d=>{ const b=d.data(); if(b.title) remote.push(b); });
     if(remote.length){ books=remote.map(b=>Object.assign({cover:FALLBACK_COVER, deliveryUrl:'', printLink:'', printPlatform:'Amazon', bestseller:false}, b)); saveBooks(); renderBooks(); renderPills(); if(!document.getElementById('adminPanel').classList.contains('hidden')) renderAdmin(); }
   }catch(e){}
@@ -2415,7 +2415,7 @@ loadBooksFromFirestore = async function(){
   if(!firestoreOn()) return;
   try{
     const snap=await db.collection('books').get();
-    if(snap.empty){ await syncAllBooksToFirestore(); return; }
+    if(snap.empty){ const _now=Date.now(); const _fresh=function(b){ return b && b.id && b.created && (_now-b.created)<60000; }; const _seeds=(typeof SEED_BOOKS!=='undefined') ? SEED_BOOKS.map(function(s){ return Object.assign({}, s); }) : []; const _keep={}; const _out=[]; _seeds.concat((books||[]).filter(_fresh)).forEach(function(b){ if(b && b.id && !_keep[b.id]){ _keep[b.id]=1; _out.push(b); } }); books=_out; saveBooks(); renderBooks(); renderPills(); return; }
     const remote=[]; snap.forEach(function(d){ const b=d.data(); if(b && b.title) remote.push(b); });
     if(!remote.length) return;
     const byId={}; remote.forEach(function(b){ byId[b.id]=b; });
@@ -2478,7 +2478,7 @@ loadBooksFromFirestore = async function(){
   if(!firestoreOn()) return;
   try{
     const snap=await db.collection('books').get();
-    if(snap.empty){ await syncAllBooksToFirestore(); return; }
+    if(snap.empty){ const _now=Date.now(); const _fresh=function(b){ return b && b.id && b.created && (_now-b.created)<60000; }; const _seeds=(typeof SEED_BOOKS!=='undefined') ? SEED_BOOKS.map(function(s){ return Object.assign({}, s); }) : []; const _keep={}; const _out=[]; _seeds.concat((books||[]).filter(_fresh)).forEach(function(b){ if(b && b.id && !_keep[b.id]){ _keep[b.id]=1; _out.push(b); } }); books=_out; saveBooks(); renderBooks(); renderPills(); return; }
     const remote=[]; snap.forEach(function(d){ const b=d.data(); if(b && b.title) remote.push(b); });
     if(!remote.length) return;
     const byId={}; remote.forEach(function(b){ byId[b.id]=b; });
@@ -2625,6 +2625,23 @@ if(typeof handleFirebaseUser==='function'){
   const _v15handleFirebaseUser = handleFirebaseUser;
   handleFirebaseUser = function(u, m){ _v15handleFirebaseUser(u, m); setTimeout(function(){ if(typeof firestoreOn==='function' && firestoreOn()){ try{ loadBooksFromFirestore(); }catch(e){} } }, 1500); };
 }
+</script>
+<script>
+/* ================= v17: fix the ORIGINAL loader too — 2026-11-15 =================
+   ROOT CAUSE (found 2026-11-15, 08:47 IST): v16 did not stop the re-creation.
+   Why: the page calls initFirebase() (and loadBooksFromFirestore) EARLY, before
+   the v11/v13/v16 override definitions exist — so on every load the ORIGINAL v9
+   loader (line ~1419) runs first. Its empty-snap branch was
+   "if(snap.empty){ await syncAllBooksToFirestore(); }" — it pushed the browser's
+   saved copy of the books back into Firestore BEFORE the v16 merge ever ran.
+   By the time v16's merge ran, the document already existed again, so it just
+   displayed it. (This is also why only History came back: the saved copy in that
+   browser now holds only History.)
+   FIX: the harmful branch is replaced IN PLACE in all three loader definitions
+   (v9 original, v11 override, v13 override) with the v16 rule — empty backend
+   means an empty store; local books are dropped, never pushed back (only seed
+   books, currently none, and books created in the last 60s are kept).
+   Backup: index-v16.html. sw.js cache msp-v16 -> msp-v17. */
 </script>
 </body>
 </html>
