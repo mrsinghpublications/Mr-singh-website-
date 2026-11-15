@@ -180,7 +180,7 @@
         <span><i class="fa-solid fa-location-dot text-[#C59B27] mr-2"></i>Mr Singh Publications, Sasaram, Bihar – 821310, India</span>
       </div>
     </div>
-    <a href="mailto:mrsinghpublications@gmail.com?subject=Book%20Enquiry%20—%20Mr%20Singh%20Publications" class="gold-btn rounded-full px-5 py-2.5 text-sm font-semibold shrink-0"><i class="fa-regular fa-paper-plane mr-2"></i>Email Us</a>
+    <button onclick="openEmailModal('Book Enquiry — Mr Singh Publications')" class="gold-btn rounded-full px-5 py-2.5 text-sm font-semibold shrink-0"><i class="fa-regular fa-paper-plane mr-2"></i>Email Us</button>
   </section>
 </main>
 
@@ -204,6 +204,16 @@
 </footer>
 
 <!-- ============ BOOK DETAILS MODAL ============ -->
+<div id="emailModal" class="hidden fixed inset-0 z-50 modal-bg flex items-center justify-center p-3 sm:p-6" onclick="if(event.target===this) closeModal('emailModal')">
+  <div class="glass-strong rounded-3xl max-w-md w-full p-6">
+    <div class="flex justify-between items-start"><h3 class="font-serif font-bold text-xl">Email Us</h3><button onclick="closeModal('emailModal')" class="w-8 h-8 rounded-full bg-white border border-[rgba(212,175,55,.4)]"><i class="fa-solid fa-xmark"></i></button></div>
+    <p class="text-sm text-gray-600 mt-2 leading-relaxed">Write to the publisher — we reply personally.</p>
+    <div class="flex items-center gap-2 mt-4"><input readonly id="emailModalAddr" value="mrsinghpublications@gmail.com" class="inp !text-xs flex-1" onclick="this.select()"><button onclick="copyText('mrsinghpublications@gmail.com')" class="outline-btn rounded-full px-3 py-2 text-xs font-semibold shrink-0"><i class="fa-regular fa-copy mr-1"></i>Copy</button></div>
+    <a id="emailModalGmail" href="https://mail.google.com/mail/?view=cm&fs=1&to=mrsinghpublications@gmail.com" target="_blank" rel="noopener" class="gold-btn block text-center rounded-full py-3 text-sm font-semibold mt-4"><i class="fa-brands fa-google mr-2"></i>Open in Gmail</a>
+    <a id="emailModalMailto" href="mailto:mrsinghpublications@gmail.com" class="outline-btn block text-center rounded-full py-2.5 text-sm font-semibold mt-2"><i class="fa-regular fa-envelope mr-2"></i>Open Mail App</a>
+    <p class="text-[11px] text-gray-500 text-center mt-3">No mail app on this device? Use the Gmail button — it opens in your browser, no app needed.</p>
+  </div>
+</div>
 <div id="detailsModal" class="hidden fixed inset-0 z-50 modal-bg flex items-start sm:items-center justify-center p-3 sm:p-6 overflow-y-auto" onclick="if(event.target===this) closeModal('detailsModal')">
   <div class="glass-strong rounded-3xl w-full max-w-3xl my-auto overflow-hidden">
     <div class="flex justify-between items-center px-5 py-3 border-b border-[rgba(212,175,55,.25)]">
@@ -721,7 +731,7 @@ function openDetails(id){
   +'<button onclick="buyBook(\''+b.id+'\')" '+(st==='live'?'':'disabled')+' class="gold-btn rounded-full px-6 py-3 text-sm font-semibold flex-1 min-w-[160px]"><i class="fa-solid fa-tablet-screen-button mr-2"></i>'+(st==='live'?'Buy eBook — '+fmtINR(b.price):'Not Yet Live')+'</button>'
   +(b.printLink?'<a href="'+esc(b.printLink)+'" target="_blank" rel="noopener" class="outline-btn rounded-full px-5 py-3 text-sm font-semibold"><i class="fa-solid fa-book-open mr-2 text-[#C59B27]"></i>Buy Printed on '+esc(b.printPlatform||'Amazon')+(b.printPrice?' — '+fmtINR(b.printPrice):'')+'</a>':'')
   +'<p class="text-[11px] text-gray-500 w-full"><i class="fa-solid fa-circle-info mr-1 text-[#C59B27]"></i>This store sells the eBook. The printed book is sold on '+(b.printLink?esc(b.printPlatform||'Amazon')+' (link above)':'an external store — the publisher adds that link in Admin')+'.</p>'
-  +'<a href="mailto:mrsinghpublications@gmail.com?subject='+encodeURIComponent('Enquiry: '+b.title)+'" class="outline-btn rounded-full px-5 py-3 text-sm font-semibold"><i class="fa-regular fa-envelope mr-1"></i>Ask About This Book</a>'
+  +'<button onclick="openEmailModal(\'Enquiry: \'+b.title+\')" class="outline-btn rounded-full px-5 py-3 text-sm font-semibold"><i class="fa-regular fa-envelope mr-1"></i>Ask About This Book</button>'
   +'</div>'
   +'<p class="text-[11px] text-gray-400 mt-3"><i class="fa-solid fa-shield-halved mr-1 text-[#C59B27]"></i>Secure payment via Cashfree / Razorpay. For help: mrsinghpublications@gmail.com</p>'
   +'</div></div>';
@@ -740,7 +750,7 @@ function buyBook(id){
     : '<div class="bg-[#F5EFE6] border border-[rgba(212,175,55,.4)] rounded-2xl p-4 mt-4 text-sm leading-relaxed"><strong>No payment link set yet.</strong><br>Please email the publisher to order this book, or pay via UPI if shared below.</div>')
   +(settings.upi?'<div class="mt-3 flex items-center gap-2"><input readonly value="'+esc(settings.upi)+'" class="inp !text-xs flex-1" onclick="this.select()"><button onclick="copyText(\''+esc(settings.upi)+'\')" class="outline-btn rounded-full px-3 py-2 text-xs font-semibold shrink-0"><i class="fa-regular fa-copy mr-1"></i>Copy UPI</button></div>':'')
   +(settings.wa?'<a target="_blank" rel="noopener" href="https://wa.me/'+esc(settings.wa.replace(/\D/g,''))+'?text='+encodeURIComponent('Hi, I want to buy: '+b.title+' ('+fmtINR(b.price)+')')+'" class="outline-btn block text-center rounded-full py-2.5 text-sm font-semibold mt-3"><i class="fa-brands fa-whatsapp mr-2 text-green-600"></i>Order on WhatsApp</a>':'')
-  +'<a href="mailto:mrsinghpublications@gmail.com?subject='+encodeURIComponent('Order: '+b.title+' — '+fmtINR(b.price))+'" class="outline-btn block text-center rounded-full py-2.5 text-sm font-semibold mt-2"><i class="fa-regular fa-envelope mr-2"></i>Order by Email</a>'
+  +'<button onclick="openEmailModal(\'Order: \'+b.title+\' — \'+fmtINR(b.price)+\')" class="outline-btn block text-center rounded-full py-2.5 text-sm font-semibold mt-2"><i class="fa-regular fa-envelope mr-2"></i>Order by Email</button>'
   +'<p class="text-[11px] text-gray-400 text-center mt-3">Payee: '+esc(settings.merchant||'Mr Singh Publications')+' • After payment, email your payment screenshot to mrsinghpublications@gmail.com</p>';
   closeModal('detailsModal'); openModal('payModal');
 }
@@ -2431,6 +2441,26 @@ loadBooksFromFirestore = async function(){
     if(!document.getElementById('adminPanel').classList.contains('hidden')) renderAdmin();
   }catch(e){}
 };
+</script>
+<script>
+/* ================= v12: Email Us fix — 2026-11-15 =================
+   Root cause: the "Email Us" button was a plain mailto: link. On a PC/phone
+   with NO default mail app set up, clicking mailto: does nothing at all —
+   no app opens, no error. That is why the button "did not work".
+   Fix: the button now opens a small panel with three ways that always work —
+   1. "Open in Gmail" (web compose, needs only a browser, no mail app),
+   2. "Open Mail App" (the old mailto:, for users who have Outlook/Apple Mail),
+   3. "Copy" (copies mrsinghpublications@gmail.com to paste anywhere).
+   The same fix covers "Ask About This Book" and "Order by Email", which were
+   mailto: links too and failed the same way. Subject is set per button. */
+function openEmailModal(subject){
+  subject = subject || 'Book Enquiry — Mr Singh Publications';
+  var enc = encodeURIComponent(subject);
+  document.getElementById('emailModalGmail').href = 'https://mail.google.com/mail/?view=cm&fs=1&to=mrsinghpublications@gmail.com&su=' + enc;
+  document.getElementById('emailModalMailto').href = 'mailto:mrsinghpublications@gmail.com?subject=' + enc;
+  closeModal('detailsModal'); closeModal('payModal');
+  openModal('emailModal');
+}
 </script>
 </body>
 </html>
