@@ -85,3 +85,9 @@ Fix:
 - Requires: Firestore Database created in Firebase Console + rules (read all, write only signed-in users) for collections books, orders, ebookRequests, customers, config.
 - sw.js cache bumped msp-v8 → msp-v9 so devices fetch the new file.
 - Backup: index-v8.html beside index.html. All 9 inline scripts pass node --check, zero TODOs.
+
+## v10 — Short publisher address — 2026-11-15
+User asked: full publisher address must NOT appear in publisher contact — keep it short: "Sasaram, Bihar – 821310, India".
+- Contact/footer address changed: "Mr Singh Publications, Village Atimi, Post Atimi, Rohtas, Bihar – 821310, India" → "Mr Singh Publications, Sasaram, Bihar – 821310, India".
+- About card changed: "Mr Singh Publications, Rohtas, Bihar" → "Mr Singh Publications, Sasaram, Bihar, India".
+- No other content changed. Backup: index-v9.html. sw.js cache msp-v9 → msp-v10.
