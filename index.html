@@ -2462,5 +2462,53 @@ function openEmailModal(subject){
   openModal('emailModal');
 }
 </script>
+<script>
+/* ================= v13: merge actually runs + real seed covers — 2026-11-15 =================
+   ROOT CAUSE of the v11 self-heal failure (found by reading the file):
+   The v11 override of loadBooksFromFirestore was defined AFTER the v9 block's
+   immediate initFirebase() call, so on every page load the ORIGINAL version ran
+   (replace books with Firestore docs, no seed merge) and the override was never
+   invoked. "Reset to the 2 sample books" also did nothing in the cloud browser
+   because resetSamples() uses confirm(), which that browser auto-dismisses.
+   Fix: redefine the merge here (last definition wins) and INVOKE it now, retry
+   once after 4s (Firebase Auth restores async; the push needs a signed-in admin),
+   and re-run it 1.5s after every Firebase sign-in.
+   Cover fix in the same merge: a seed book whose stored cover is empty, the
+   generic fallback SVG, or the broken /images/bpsc-history-cover.png URL (404)
+   now gets the seed's real embedded cover art back. Both cards then show their
+   real covers instead of the same gold placeholder. */
+loadBooksFromFirestore = async function(){
+  if(!firestoreOn()) return;
+  try{
+    const snap=await db.collection('books').get();
+    if(snap.empty){ await syncAllBooksToFirestore(); return; }
+    const remote=[]; snap.forEach(function(d){ const b=d.data(); if(b && b.title) remote.push(b); });
+    if(!remote.length) return;
+    const byId={}; remote.forEach(function(b){ byId[b.id]=b; });
+    const merged=remote.map(function(b){
+      const seed=(typeof SEED_BOOKS!=='undefined') ? SEED_BOOKS.find(function(s){ return s.id===b.id; }) : null;
+      const out=Object.assign({cover: (typeof FALLBACK_COVER!=='undefined'?FALLBACK_COVER:''), deliveryUrl:'', printLink:'', printPlatform:'Amazon', bestseller:false}, b);
+      if(seed){
+        const fb=(typeof FALLBACK_COVER!=='undefined'?FALLBACK_COVER:'');
+        if(!out.cover || out.cover===fb || (out.cover||'').indexOf('images/bpsc-history-cover.png')!==-1) out.cover=seed.cover||out.cover;
+        if(!out.deliveryUrl && seed.deliveryUrl) out.deliveryUrl=seed.deliveryUrl;
+        if(!out.desc && seed.desc) out.desc=seed.desc;
+      }
+      return out;
+    });
+    if(typeof SEED_BOOKS!=='undefined'){
+      SEED_BOOKS.forEach(function(s){ if(!byId[s.id]) merged.push(Object.assign({}, s)); });
+    }
+    books=merged; saveBooks(); renderBooks(); renderPills();
+    if(!document.getElementById('adminPanel').classList.contains('hidden')) renderAdmin();
+  }catch(e){}
+};
+if(typeof firestoreOn==='function' && firestoreOn()){ try{ loadBooksFromFirestore(); }catch(e){} }
+setTimeout(function(){ if(typeof firestoreOn==='function' && firestoreOn()){ try{ loadBooksFromFirestore(); }catch(e){} } }, 4000);
+if(typeof handleFirebaseUser==='function'){
+  const _v12handleFirebaseUser = handleFirebaseUser;
+  handleFirebaseUser = function(u, m){ _v12handleFirebaseUser(u, m); setTimeout(function(){ if(typeof firestoreOn==='function' && firestoreOn()){ try{ loadBooksFromFirestore(); }catch(e){} } }, 1500); };
+}
+</script>
 </body>
 </html>
