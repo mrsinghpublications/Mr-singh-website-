@@ -32,6 +32,7 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
 <style>
   *{ -webkit-tap-highlight-color: transparent; }
   body{ background:#FDFBF7; color:#1E1E1E; font-family:Poppins,system-ui,sans-serif;
@@ -415,8 +416,12 @@
               <div><label class="lbl">Razorpay Key ID (public) — rzp_live_… / rzp_test_…</label><input id="sRzKeyId" class="inp font-mono !text-xs" placeholder="rzp_live_xxxxxxxxxxxxxx"></div>
               <div><label class="lbl">Cashfree App ID / Client ID (public)</label><input id="sCfAppId" class="inp font-mono !text-xs" placeholder="e.g. 123456abcdef…"></div>
             </div>
-            <p class="text-[11px] text-gray-500 mt-2 leading-relaxed">Cashfree note: sirf App ID se in-app checkout nahi banta — Cashfree ko server se <strong>session_id</strong> chahiye, jo secret key se banta hai. Isliye Cashfree ke liye abhi bhi <strong>payment link</strong> hi use hoga (link optional hai, par Cashfree checkout ke liye link ya backend chahiye). Razorpay Key ID se in-app checkout turant chalu ho jata hai.</p>
+            <p class="text-[11px] text-gray-500 mt-2 leading-relaxed">Cashfree note: sirf App ID se in-app checkout nahi banta — Cashfree ko server se <strong>session_id</strong> chahiye, jo secret key se banta hai. Isliye Cashfree checkout ke liye <strong>payment link ya neeche wala Cloud Function</strong> chahiye — Cloud Function on karein to har book ke liye automatic dynamic link banega (coupon discount ke saath). Razorpay Key ID se in-app checkout turant chalu ho jata hai.</p>
             <p class="text-[11px] text-gray-500 mt-1">Key kahan milegi: Razorpay Dashboard → Settings → API Keys → Key ID copy karein. Cashfree Dashboard → Developers → API Keys → App ID copy karein.</p>
+            <div class="mt-4 border-t border-[rgba(212,175,55,.3)] pt-3">
+              <label class="flex items-start gap-2 text-xs leading-relaxed cursor-pointer"><input id="sCfFunctionOn" type="checkbox" class="mt-0.5 accent-[#C59B27]"><span><strong>Cashfree Dynamic Links (Cloud Function)</strong> — on karein to har book ke liye server se fresh payment link banega (coupon + bulk discount ke saath, amount server se verify hoga). <strong>Secret Key yahan nahi dalni</strong> — wo sirf Cloud Function me safe rahegi.</span></label>
+              <p class="text-[11px] text-gray-500 mt-2 leading-relaxed">Iske liye zaroori hai: (1) Firebase project <strong>Blaze plan</strong> par ho — free Spark plan par Cloud Function Cashfree (non-Google) ko call nahi kar sakta; (2) <strong>functions/ folder deploy</strong> ho (<code>firebase deploy --only functions</code>); (3) Cashfree Secret Key function secret ke taur par set ho (<code>firebase functions:secrets:set CASHFREE_CLIENT_SECRET</code>). Details: <strong>functions/DEPLOY_GUIDE.md</strong> dekhein. Jab tak ye setup poora nahi hota, checkbox off rakhein — purana payment link / Razorpay flow chalta rahega.</p>
+            </div>
           </div>
           <div class="border-t border-[rgba(212,175,55,.3)] pt-4">
             <h3 class="font-semibold text-sm">Firebase Auth Setup (No-Code)</h3>
@@ -614,7 +619,7 @@ let deferredPrompt=null;
 function loadAll(){
   try{ books=JSON.parse(localStorage.getItem(LS_BOOKS)||'null')||null; }catch(e){ books=null; }
   if(!Array.isArray(books)||!books.length){ books=JSON.parse(JSON.stringify(SEED_BOOKS)); saveBooks(); }
-  try{ settings=Object.assign({payLink:'',upi:'',merchant:'Mr Singh Publications',wa:'',announce:'',gateway:'cashfree',firebase:'',rzKeyId:'',cfAppId:''}, JSON.parse(localStorage.getItem(LS_SETTINGS)||'{}')); }catch(e){}
+  try{ settings=Object.assign({payLink:'',upi:'',merchant:'Mr Singh Publications',wa:'',announce:'',gateway:'cashfree',firebase:'',rzKeyId:'',cfAppId:'',cfFunctionOn:false}, JSON.parse(localStorage.getItem(LS_SETTINGS)||'{}')); }catch(e){}
   if(!localStorage.getItem(LS_SETTINGS)){ try{ const old=JSON.parse(localStorage.getItem('msp_settings_v1')||'{}'); settings=Object.assign(settings, old); saveSettingsLS(); }catch(e){} }
   applyScheduled(); // scheduled books whose time has come go live
 }
@@ -2049,7 +2054,9 @@ function buyBook(id){
   +'<p class="text-xs text-gray-500 mt-3 text-center">Payment gateway: <strong>'+gwName+'</strong>'+(canRz?' • In-app Razorpay checkout':'')+'</p>'
   +((d.bulkAmt>0||d.couponAmt>0)?'<div class="bg-[#F5EFE6] rounded-2xl p-3 mt-2 text-xs leading-relaxed">'+(d.bulkAmt>0?'<p>Bulk discount ('+d.bulkPct+'% for '+(myBookCount()+1)+' books): <strong class="text-green-700">− '+fmtINR(d.bulkAmt)+'</strong></p>':'')+(d.couponAmt>0?'<p>Coupon '+esc(d.coupon.code)+': <strong class="text-green-700">− '+fmtINR(d.couponAmt)+'</strong></p>':'')+'<p class="font-bold mt-1">You pay: '+fmtINR(d.finalPrice)+'</p></div>':'')
   +'<div class="flex gap-2 mt-3"><input id="couponInput" class="inp flex-1 !text-xs" placeholder="Coupon code (e.g. WELCOME10)" value="'+(window._appliedCoupon?esc(window._appliedCoupon.code):'')+'"><button onclick="applyCoupon(document.getElementById(\'couponInput\').value, \''+b.id+'\')" class="gold-btn rounded-full px-4 py-2 text-xs font-semibold shrink-0">Apply</button>'+(window._appliedCoupon?'<button onclick="window._appliedCoupon=null; buyBook(\''+b.id+'\')" class="outline-btn rounded-full px-3 py-2 text-xs font-semibold">Remove</button>':'')+'</div>'
-  +(link
+  +((gateway==='cashfree' && settings.cfFunctionOn)
+    ? '<button onclick="payWithCashfreeFunction(\''+b.id+'\')" class="gold-btn w-full rounded-full py-3 text-sm font-semibold mt-3"><i class="fa-solid fa-lock mr-2"></i>Pay with Cashfree — '+fmtINR(d.finalPrice)+'</button><p class="text-[11px] text-gray-500 text-center mt-2">Dynamic secure link — discount applied, amount server se verify hoga. Aap Cashfree ke secure page par jayenge.</p>'
+    : link
     ? '<a href="'+esc(link)+'" target="_blank" rel="noopener" onclick="window._paidBook=\''+b.id+'\'" class="gold-btn block text-center rounded-full py-3 text-sm font-semibold mt-3"><i class="fa-solid fa-lock mr-2"></i>Pay Securely — '+fmtINR(d.finalPrice)+'</a><p class="text-[11px] text-gray-500 text-center mt-2">You will be taken to the secure '+gwName+' payment page in a new tab.</p>'
     : canRz
     ? '<button onclick="payWithRazorpay(\''+b.id+'\')" class="gold-btn w-full rounded-full py-3 text-sm font-semibold mt-3"><i class="fa-solid fa-lock mr-2"></i>Pay with Razorpay — '+fmtINR(d.finalPrice)+'</button><p class="text-[11px] text-gray-500 text-center mt-2">Secure in-app checkout — UPI, card or net-banking. No payment link needed.</p>'
@@ -2642,6 +2649,136 @@ if(typeof handleFirebaseUser==='function'){
    means an empty store; local books are dropped, never pushed back (only seed
    books, currently none, and books created in the last 60s are kept).
    Backup: index-v16.html. sw.js cache msp-v16 -> msp-v17. */
+</script>
+<script>
+/* ================= v18: Cashfree Dynamic Links via Firebase Cloud Function — 2026-11-15 =================
+   User request: checkout button se Cloud Function call ho, wo Cashfree se fresh
+   dynamic payment link banaye (bookId + optional couponCode), aur user payment
+   ke liye redirect ho jaye. Fayde: zero hardcoding, coupons supported, Secret
+   Key server par safe.
+   HOW IT WORKS:
+   - payWithCashfreeFunction(bookId): firebase.functions('asia-south1')
+     .httpsCallable('createCashfreeLink') ko {bookId, couponCode} bhejta hai.
+     Function Firestore se price nikalta hai, bulk + coupon discount lagata hai,
+     Cashfree Payment Links API se fresh link banata hai, pending order likhta
+     hai, aur {link_url, order_id, amount} deta hai — frontend redirect karta hai.
+   - Return handler: Cashfree payment ke baad user ko /?cf_return=1&order_id=...
+     &link_status=PAID par wapas bhejta hai. link_status PAID ho to order confirm
+     hota hai (eBook Library me). PAID na ho to "I Have Paid" manual confirm
+     abhi bhi chalta hai. (Bank-grade webhook verification is version me nahi hai
+     — return URL par bharosa hai, jo pehle wale "I Have Paid" flow jitna trusted hai.)
+   - Coupons: Admin Tab 5 me save hote hi coupons Firestore `coupons` collection
+     me sync hote hain (server wahi se validate karta hai). Bina sync ke coupon
+     "not found" aayega.
+   SAFETY / LIMITS (zaroor padhein — SPEC.md v18 + functions/DEPLOY_GUIDE.md):
+   - YE OPT-IN HAI: Admin Tab 3 me "Cashfree Dynamic Links" checkbox OFF hai to
+     kuch nahi badalta — purana payment link / Razorpay flow chalta hai.
+   - Blaze plan ZAROORI hai: free Spark plan par Cloud Function Cashfree
+     (non-Google) ko call nahi kar sakta. Bina Blaze ke function deploy hoga
+     par Cashfree call fail hogi.
+   - Secret Key (CASHFREE_CLIENT_SECRET) sirf `firebase functions:secrets:set`
+     se set hoti hai — kabhi is file, chat ya repo me mat likhna.
+   - Deploy: `firebase deploy --only functions` (functions/ folder).
+   Backup: index-v17.html. sw.js cache msp-v17 -> msp-v18. */
+if(typeof settings!=='undefined' && typeof settings.cfFunctionOn==='undefined') settings.cfFunctionOn=false;
+
+/* ---- Admin Tab 3: Cloud Function toggle ---- */
+const _v17fillSettingsForm = fillSettingsForm;
+fillSettingsForm = function(){
+  _v17fillSettingsForm();
+  const cb=document.getElementById('sCfFunctionOn'); if(cb) cb.checked=!!settings.cfFunctionOn;
+};
+const _v17saveSettings = saveSettings;
+saveSettings = function(ev){
+  _v17saveSettings(ev);
+  const cb=document.getElementById('sCfFunctionOn'); if(cb) settings.cfFunctionOn=cb.checked;
+  saveSettingsLS();
+};
+
+/* ---- Coupons sync to Firestore (server coupon validate karne ke liye) ---- */
+async function syncCouponsToFirestore(){
+  if(!firestoreOn() || typeof db==='undefined' || !db) return;
+  try{
+    const u=(typeof firebaseAuth!=='undefined' && firebaseAuth && firebaseAuth.currentUser) ? firebaseAuth.currentUser : null;
+    if(!u) return;
+    for(const c of (coupons||[])){
+      try{ await db.collection('coupons').doc(String(c.code||'').toUpperCase()).set(Object.assign({}, c, {code:String(c.code||'').toUpperCase(), updatedAt:new Date().toISOString()})); }catch(e){}
+    }
+  }catch(e){}
+}
+async function loadCouponsFromFirestore(){
+  if(!firestoreOn() || typeof db==='undefined' || !db) return;
+  try{
+    const snap=await db.collection('coupons').get();
+    if(snap.empty) return;
+    const byCode={}; (coupons||[]).forEach(function(c){ if(c&&c.code) byCode[String(c.code).toUpperCase()]=c; });
+    snap.forEach(function(d){ const c=d.data(); if(c&&c.code) byCode[String(c.code).toUpperCase()]=Object.assign({}, byCode[String(c.code).toUpperCase()]||{}, c); });
+    coupons=Object.keys(byCode).map(function(k){ return byCode[k]; });
+    try{ localStorage.setItem(LS_COUPONS, JSON.stringify(coupons)); }catch(e){}
+  }catch(e){}
+}
+const _v17saveCoupons = saveCoupons;
+saveCoupons = function(){ _v17saveCoupons(); syncCouponsToFirestore(); };
+if(typeof handleFirebaseUser==='function'){
+  const _v17handleFirebaseUser2 = handleFirebaseUser;
+  handleFirebaseUser = function(u, m){ _v17handleFirebaseUser2(u, m); setTimeout(function(){ loadCouponsFromFirestore(); }, 2000); };
+}
+
+/* ---- Cashfree dynamic link via Cloud Function ---- */
+function cfFunctions(){
+  try{
+    if(typeof firebase==='undefined' || !firebase.app) return null;
+    return firebase.app().functions('asia-south1');
+  }catch(e){ return null; }
+}
+async function payWithCashfreeFunction(bookId){
+  const b=findBook(bookId); if(!b||!sessionUser) return;
+  const fns=cfFunctions();
+  if(!fns || typeof fns.httpsCallable!=='function'){ toast('Cloud Functions load nahi hua — internet check karein, ya Admin Tab 3 me function band karke payment link use karein.', false); return; }
+  toast('Secure payment link ban raha hai…');
+  try{
+    const call=fns.httpsCallable('createCashfreeLink');
+    const res=await call({ bookId:b.id, couponCode:(window._appliedCoupon?window._appliedCoupon.code:'') });
+    const d=res && res.data ? res.data : {};
+    if(d.free){ closeModal('payModal'); confirmOrder(b.id); return; }
+    if(!d.link_url) throw new Error('Payment link nahi bana.');
+    try{ sessionStorage.setItem('msp_pending_cf_order', JSON.stringify({order_id:d.order_id, bookId:b.id, amount:d.amount})); }catch(e){}
+    window.location.href=d.link_url;
+  }catch(e){
+    const msg=(e && e.message) ? e.message : 'Payment link nahi ban paya.';
+    toast('Cashfree link error: '+msg, false);
+    buyBook(bookId);
+  }
+}
+
+/* ---- Cashfree return handler: payment ke baad Cashfree yahan wapas bhejta hai ---- */
+(function(){
+  try{
+    const q=new URLSearchParams(window.location.search);
+    if(q.get('cf_return')!=='1') return;
+    const orderId=q.get('order_id')||q.get('link_id')||'';
+    const status=(q.get('link_status')||'').toUpperCase();
+    window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+    if(!orderId){ toast('Payment return mila, par order nahi mila — My Orders check karein.'); return; }
+    if(status && status!=='PAID'){ toast('Payment poora nahi hua ('+status+') — dobara try karein, ya "I Have Paid" se confirm karein.', false); return; }
+    if(status!=='PAID'){ toast('Payment status verify nahi hua — agar aapne pay kiya hai to "I Have Paid" se confirm karein.'); return; }
+    if(!sessionUser){ toast('Payment ho gaya hai — please login karein, phir eBook Library me milega.'); return; }
+    const finish=function(pending){
+      const bookId=pending && pending.bookId ? pending.bookId : (function(){ try{ const p=JSON.parse(sessionStorage.getItem('msp_pending_cf_order')||'null'); return p&&p.bookId?p.bookId:null; }catch(e){ return null; } })();
+      if(!bookId){ toast('Payment ho gaya hai — My Orders me check karein.'); return; }
+      confirmOrder(bookId);
+      try{
+        const mine=myOrders().filter(function(o){ return o.bookId===bookId; }).sort(function(a,b){ return new Date(b.date)-new Date(a.date); })[0];
+        if(mine){ if(pending&&pending.amount!=null) mine.price=pending.amount; mine.method='cashfree-link'; mine.paymentId=orderId; mine.status='Payment confirmed — eBook delivered'; saveOrders(); if(typeof syncOrderToFirestore==='function') syncOrderToFirestore(mine); }
+        if(typeof db!=='undefined' && db){ db.collection('orders').doc(orderId).update({status:'Payment confirmed — eBook delivered', paymentId:orderId}).catch(function(){}); }
+      }catch(e){}
+      toast('Payment successful — eBook aapki Library me hai!');
+    };
+    if(typeof db!=='undefined' && db){
+      db.collection('orders').doc(orderId).get().then(function(doc){ finish(doc.exists?doc.data():null); }).catch(function(){ finish(null); });
+    } else finish(null);
+  }catch(e){}
+})();
 </script>
 </body>
 </html>
