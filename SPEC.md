@@ -91,3 +91,8 @@ User asked: full publisher address must NOT appear in publisher contact — keep
 - Contact/footer address changed: "Mr Singh Publications, Village Atimi, Post Atimi, Rohtas, Bihar – 821310, India" → "Mr Singh Publications, Sasaram, Bihar – 821310, India".
 - About card changed: "Mr Singh Publications, Rohtas, Bihar" → "Mr Singh Publications, Sasaram, Bihar, India".
 - No other content changed. Backup: index-v9.html. sw.js cache msp-v9 → msp-v10.
+
+## v11 — Firestore books merge (seed books never lost, covers kept) — 2026-11-15
+Bug: after "Erase Everything" + reload, only 1 book showed. Firestore held only b-kaidi — the History seed never reached Firestore (added before the Firestore Database existed; sync failed silently), and the local catalog had been wiped. A manual re-add made a wrong duplicate ("BPSC History Guide", no MRP/pages/ISBN, wrong category, no cover).
+Fix: loadBooksFromFirestore now MERGES instead of replacing — Firestore books are used, empty covers/deliveryUrls are filled from the matching SEED_BOOKS entry (covers are data: URLs, sync strips them, so the file's own seed art is the source), and any missing SEED_BOOKS entry is added back locally and pushed to Firestore on the next save (self-healing, needs a signed-in admin). The wrong duplicate doc (b-1794706988743) must be deleted once in the Firebase Console.
+- Backup: index-v10.html. sw.js cache msp-v10 → msp-v11. All 10 inline scripts pass node --check, zero TODOs.

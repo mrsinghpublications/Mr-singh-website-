@@ -2388,5 +2388,49 @@ initFirebase = function(){
 /* Re-init now with the embedded default config, so this device picks up cloud settings immediately */
 initFirebase();
 </script>
+<script>
+/* ================= v11: Firestore books merge — seed books never lost, covers kept =================
+   Bug found 2026-11-15: after "Erase Everything" + reload, the storefront showed only
+   1 book. Firestore held only b-kaidi — the History seed book never reached Firestore
+   (it was added before the Firestore Database existed, and its sync failed silently),
+   and the local catalog had been wiped. A re-add created a wrong duplicate
+   ("BPSC History Guide", no MRP/pages/ISBN, wrong category, no cover).
+   Fix (v11): loadBooksFromFirestore now MERGES instead of replacing —
+   1. Firestore books are used, but empty covers/deliveryUrls are filled from the
+      matching SEED_BOOKS entry (covers are data: URLs, which sync strips, so
+      Firestore can never hold them — the file's own seed art is the source).
+   2. Any SEED_BOOKS entry missing from Firestore is added back locally AND
+      pushed to Firestore on the next save (self-healing, needs a signed-in admin).
+   The wrong duplicate doc (b-1794706988743) must be deleted once in the Firebase
+   Console — after that, fresh devices always show both seed books with covers. */
+const _v10loadBooksFromFirestore = loadBooksFromFirestore;
+loadBooksFromFirestore = async function(){
+  if(!firestoreOn()) return;
+  try{
+    const snap=await db.collection('books').get();
+    if(snap.empty){ await syncAllBooksToFirestore(); return; }
+    const remote=[]; snap.forEach(function(d){ const b=d.data(); if(b && b.title) remote.push(b); });
+    if(!remote.length) return;
+    const byId={}; remote.forEach(function(b){ byId[b.id]=b; });
+    const merged=remote.map(function(b){
+      const seed=(typeof SEED_BOOKS!=='undefined') ? SEED_BOOKS.find(function(s){ return s.id===b.id; }) : null;
+      const out=Object.assign({cover: (typeof FALLBACK_COVER!=='undefined'?FALLBACK_COVER:''), deliveryUrl:'', printLink:'', printPlatform:'Amazon', bestseller:false}, b);
+      if(seed){
+        if(!out.cover || out.cover===(typeof FALLBACK_COVER!=='undefined'?FALLBACK_COVER:'')) out.cover=seed.cover||out.cover;
+        if(!out.deliveryUrl && seed.deliveryUrl) out.deliveryUrl=seed.deliveryUrl;
+        if(!out.desc && seed.desc) out.desc=seed.desc;
+      }
+      return out;
+    });
+    if(typeof SEED_BOOKS!=='undefined'){
+      SEED_BOOKS.forEach(function(s){
+        if(!byId[s.id]) merged.push(Object.assign({}, s));
+      });
+    }
+    books=merged; saveBooks(); renderBooks(); renderPills();
+    if(!document.getElementById('adminPanel').classList.contains('hidden')) renderAdmin();
+  }catch(e){}
+};
+</script>
 </body>
 </html>
