@@ -241,13 +241,13 @@
   <div class="glass-strong rounded-3xl w-full max-w-sm p-6 text-center">
     <img src="logo.png" alt="Mr Singh Publications" class="h-14 w-auto mx-auto object-contain" onerror="this.style.display='none'">
     <h3 class="font-serif font-bold text-xl mt-3">Admin Login</h3>
-    <p class="text-xs text-gray-500 mt-1">Only the publisher can manage books. Default password is <code class="bg-[#F5EFE6] px-1.5 py-0.5 rounded font-semibold">admin123</code> — change it after first login.</p>
+    <p class="text-xs text-gray-500 mt-1">Only the publisher can manage books.</p>
     <input id="adminPw" type="password" placeholder="Enter admin password" class="inp mt-4 text-center" onkeydown="if(event.key==='Enter') doLogin()">
     <p id="loginErr" class="hidden text-xs text-red-600 font-medium mt-2">Wrong password. Please try again.</p>
     <button onclick="doLogin()" class="gold-btn w-full rounded-full py-2.5 text-sm font-semibold mt-4"><i class="fa-solid fa-right-to-bracket mr-2"></i>Login to Admin Panel</button>
     <p class="text-center text-xs text-gray-400 mt-3">— or —</p>
-    <button onclick="googleAdminLogin()" class="w-full rounded-full py-2.5 text-sm font-semibold bg-white border border-gray-300 hover:border-[#C59B27]"><i class="fa-brands fa-google mr-2 text-[#DB4437]"></i>Login with Google (Firebase Admin)</button>
-    <p class="text-[11px] text-gray-400 mt-2">Google admin login works only in Live Firebase Mode and only for the Admin Email set in Tab 3 (default: mrsinghpublications@gmail.com).</p>
+    <button onclick="googleAdminLogin()" class="w-full rounded-full py-2.5 text-sm font-semibold bg-white border border-gray-300 hover:border-[#C59B27]"><i class="fa-brands fa-google mr-2 text-[#DB4437]"></i>Login with Google</button>
+    <p class="text-[11px] text-gray-400 mt-2">Only the publisher's Google account can open the Admin Panel.</p>
     <button onclick="closeModal('loginModal')" class="text-xs text-gray-500 underline mt-3">Cancel</button>
   </div>
 </div>
@@ -429,7 +429,7 @@
             <textarea id="sFirebase" rows="4" class="inp font-mono !text-xs mt-2" placeholder='{"apiKey":"…","authDomain":"…","projectId":"…","appId":"…"}'></textarea>
             <div class="flex gap-2 mt-2 flex-wrap"><button type="button" onclick="testFirebase()" class="outline-btn rounded-full px-4 py-2 text-xs font-semibold"><i class="fa-solid fa-plug-circle-check mr-1"></i>Test Firebase Connection</button><button type="button" onclick="diagnoseFirebase()" class="outline-btn rounded-full px-4 py-2 text-xs font-semibold"><i class="fa-solid fa-stethoscope mr-1"></i>Diagnose Login / OTP</button><button type="button" onclick="googleLogin()" class="outline-btn rounded-full px-4 py-2 text-xs font-semibold"><i class="fa-brands fa-google mr-1"></i>Test Google Login</button><span id="firebaseStatus" class="text-xs font-semibold self-center text-gray-500">Mode: Demo (no keys saved)</span></div>
             <div id="fbDiagAdmin" class="hidden bg-[#F5EFE6] border border-[rgba(212,175,55,.4)] rounded-2xl p-4 mt-2 text-xs leading-relaxed"></div>
-            <details class="bg-[#F5EFE6] rounded-2xl p-4 mt-3 text-xs leading-relaxed"><summary class="font-semibold cursor-pointer">Step-by-step Firebase setup guide</summary><ol class="list-decimal ml-4 mt-2 space-y-1"><li>Go to <strong>console.firebase.google.com</strong> → Create project → Build → Authentication → Get started.</li><li>Sign-in method: enable <strong>Google</strong> and <strong>Phone</strong>.</li><li>Project Settings → Your apps → Web app (&lt;/&gt;) → copy the <strong>firebaseConfig</strong> object.</li><li>Paste the whole JSON above and press <strong>Save Payment Settings</strong>.</li><li>For Phone OTP: in Authentication → Settings → Authorized domains, add your GitHub Pages domain (e.g. <code>username.github.io</code>).</li><li>Reload the store — the Auth modal will say “Live Firebase Mode” and real OTPs will be sent.</li></ol></details>
+            <details class="bg-[#F5EFE6] rounded-2xl p-4 mt-3 text-xs leading-relaxed"><summary class="font-semibold cursor-pointer">Step-by-step Firebase setup guide</summary><ol class="list-decimal ml-4 mt-2 space-y-1"><li>Go to <strong>console.firebase.google.com</strong> → Create project → Build → Authentication → Get started.</li><li>Sign-in method: enable <strong>Google</strong> and <strong>Phone</strong>.</li><li>Project Settings → Your apps → Web app (&lt;/&gt;) → copy the <strong>firebaseConfig</strong> object.</li><li>Paste the whole JSON above and press <strong>Save Payment Settings</strong>.</li><li>For Phone OTP: in Authentication → Settings → Authorized domains, add your GitHub Pages domain (e.g. <code>username.github.io</code>).</li><li>Reload the store — Google sign-in and Phone OTP will work.</li></ol></details>
           </div>
           <div class="border-t border-[rgba(212,175,55,.3)] pt-4 space-y-3">
             <h3 class="font-semibold text-sm">Firebase — Auth, Firestore &amp; Storage (optional, no-code)</h3>
@@ -506,7 +506,7 @@
     </div>
     <p id="authModeBadge" class="text-[11px] font-bold mt-3 inline-block bg-[#F5EFE6] border border-[rgba(212,175,55,.4)] text-[#7A5E10] rounded-full px-3 py-1">Demo Mode — OTP is shown in a gold toast</p>
     <div id="fbDiag" class="hidden bg-[#F5EFE6] border border-[rgba(212,175,55,.4)] rounded-2xl p-3 mt-3 text-xs leading-relaxed"></div>
-    <p class="text-[11px] text-gray-400 mt-2">Note: Gmail se login Google button se hota hai. Email par Firebase OTP nahi bhejta — email wale users password ya Google se login karein; mobile number par hi real OTP aata hai.</p>
+    <p class="text-[11px] text-gray-400 mt-2">Gmail users: sign in with Google. Mobile users: sign in with the OTP sent to your phone.</p>
     <div class="flex gap-2 mt-4">
       <button onclick="setAuthView('login')" data-aview="login" class="auth-tab auth-view-tab active flex-1 rounded-full py-2 text-xs font-semibold border border-[rgba(212,175,55,.4)] bg-white">Login</button>
       <button onclick="setAuthView('signup')" data-aview="signup" class="auth-tab auth-view-tab flex-1 rounded-full py-2 text-xs font-semibold border border-[rgba(212,175,55,.4)] bg-white">Sign Up</button>
@@ -2335,8 +2335,8 @@ function _origRequestEbookEmail(orderId){
       Firebase-signed-in user, i.e. Google Admin login) and loaded from there
       on every start, so every device gets the same keys.
    3. Firestore Database must exist + rules allow read-all / write-if-signed-in.
-   Admin password is NOT in settings (separate LocalStorage key) and is never
-   synced. No Secret Key is ever stored here. */
+   (v19: the admin password now syncs as a SHA-256 hash in settings.adminPwHash,
+   so every browser uses the same password. No Secret Key is ever stored here. */
 const DEFAULT_FIREBASE_CONFIG = {apiKey:"AIzaSyAv8lrY2V6rVTZY_JFZL5drC-78rI1kJSc",authDomain:"mr-singh-publications-5e60c.firebaseapp.com",projectId:"mr-singh-publications-5e60c",storageBucket:"mr-singh-publications-5e60c.firebasestorage.app",messagingSenderId:"793195202503",appId:"1:793195202503:web:3023cccc2d0ae2012bbbe2"};
 const _v8firebaseConfig = firebaseConfig;
 firebaseConfig = function(){ const c=_v8firebaseConfig(); if(c) return c; return DEFAULT_FIREBASE_CONFIG; };
@@ -2368,9 +2368,10 @@ async function loadCloudSettings(){
     const cloud=snap.data()||{};
     const cloudAt=cloud.updatedAt||'';
     if(cloudAt && settings._cloudUpdatedAt && cloudAt<=settings._cloudUpdatedAt){ cloudSettingsStatus('Cloud Settings: up to date \u2713'); return; }
-    const KEYS=['firebase','payLink','upi','merchant','wa','announce','gateway','rzKeyId','cfAppId','emailjsKey','emailjsService','emailjsTemplate','adminEmail','firestoreSync','storageProvider','r2Url','fcmVapid'];
+    const KEYS=['firebase','payLink','upi','merchant','wa','announce','gateway','rzKeyId','cfAppId','emailjsKey','emailjsService','emailjsTemplate','adminEmail','firestoreSync','storageProvider','r2Url','fcmVapid','adminPwHash'];
     let changed=false;
     KEYS.forEach(function(k){ if(cloud[k]!==undefined && cloud[k]!=='' && cloud[k]!==null){ if(settings[k]!==cloud[k]){ settings[k]=cloud[k]; changed=true; } } });
+    if(cloud.adminPwHash && /^[0-9a-f]{64}$/.test(cloud.adminPwHash)){ try{ localStorage.setItem(LS_PW, cloud.adminPwHash); }catch(e){} }
     if(cloudAt) settings._cloudUpdatedAt=cloudAt;
     if(changed){ _v8saveSettingsLS(); applyAnnouncement(); if(typeof fillSettingsForm==='function'){ try{ fillSettingsForm(); }catch(e){} } }
     cloudSettingsStatus('Cloud Settings: loaded from Firebase \u2713');
@@ -2780,5 +2781,329 @@ async function payWithCashfreeFunction(bookId){
   }catch(e){}
 })();
 </script>
+<script>
+/* ================= v19: ONE password + ONE book list on every browser; covers that show — 2026-11-23 =================
+   ROOT CAUSES (read from the code + live cloud check 23 Nov 21:05 IST: Firestore `books` is EMPTY — 0 docs):
+   1. PASSWORD: getPw()/changePassword() used ONLY this browser's localStorage key
+      msp_admin_pw_v1 (v9 comment: password "is never synced"). A password changed in
+      Browser A stayed admin123 (or the old value) in Browser B — each browser had
+      its own password. That is exactly the reported symptom.
+   2. BOOKS: saveBook() -> saveBooks() writes localStorage always, and pushes to
+      Firestore only if Firestore is on. Firestore rules allow writes ONLY from a
+      signed-in (Google) user, but password login never signs in to Firebase Auth —
+      so the push failed with permission-denied and the error was swallowed by
+      catch(e){}. The book then existed only in that browser's localStorage, while
+      every other browser loads books from Firestore — so it never appeared on the
+      website. The loader then REPLACED the local list with Firestore docs (empty),
+      so the unsynced book could vanish even from the first browser.
+   3. COVERS: (a) Google Drive share links (/file/d/ID/view) are web pages, not
+      images — used as <img src> they never render; nothing converted them.
+      (b) An uploaded photo is stored as a data: URL, which syncBookToFirestore
+      STRIPS (cover:'') before writing to Firestore — so on any other browser (or
+      after a Firestore reload) the cover became the generic fallback gradient.
+   FIX:
+   - Password is stored as a SHA-256 hash (never plain text) in settings.adminPwHash,
+     synced through the existing cloud-settings doc (config/settings) — same mechanism
+     as the other settings. localStorage keeps the hash as an offline fallback.
+     doLogin/changePassword compare hashes. changePassword() says plainly when the
+     new password is this-browser-only (no Google sign-in = no cloud sync).
+     A Google-signed-in admin can reset the password without the old one (recovery).
+   - Books: the Firestore loader now KEEPS local books that were never synced
+     (no _synced flag) and were created in the last 7 days, in BOTH the empty and
+     non-empty branches, and pushes them up when possible. Books already synced
+     (_synced) and missing from Firestore stay deleted (v16/v17 deletion-finality
+     kept; the 7-day window also keeps the Nov-15 deleted books from coming back).
+     saveBook() warns immediately if the cloud push cannot happen instead of
+     failing silently, and a Cloud Sync status line in the Admin panel shows it.
+     saveBooks() no longer dies on a full browser storage (quota) — cloud sync
+     still runs.
+   - Covers: Drive links are normalised to direct image links (uc?export=view&id=)
+     at input, at save, and at load (old saved links are fixed too). The loader
+     keeps a local cover (incl. an uploaded photo) when the cloud copy has none.
+     Uploaded photos still need Firebase Storage (Tab 3 provider) or a Drive link
+     to appear on other browsers — the Admin status line says so.
+   - UI CLEANUP (owner asked 23 Nov): the default password is no longer shown
+     anywhere on the site; "Login with Google (Firebase Admin)" is just
+     "Login with Google"; the "Live Firebase Mode — real OTP" badge and the
+     Firebase/real-OTP explanations are gone from customer-facing screens.
+     (Admin Tab 3 setup text is unchanged — the admin needs it.)
+   NOTE: the password gate is still client-side only (as before) — Google Admin
+   Login remains the real gate for cloud writes. Backup: index-v18.html.
+   sw.js cache msp-v18 -> msp-v19. */
+function sha256hex(str){
+  var K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  var H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  function rr(v,a){ return (v>>>a)|(v<<(32-a)); }
+  var bytes=[];
+  var utf8=unescape(encodeURIComponent(str));
+  for(var i=0;i<utf8.length;i++) bytes.push(utf8.charCodeAt(i)&255);
+  var bitLen=bytes.length*8;
+  bytes.push(0x80);
+  while(bytes.length%64!==56) bytes.push(0);
+  bytes.push(0,0,0,0,(bitLen>>>24)&255,(bitLen>>>16)&255,(bitLen>>>8)&255,bitLen&255);
+  for(var off=0; off<bytes.length; off+=64){
+    var w=[];
+    for(var t=0;t<16;t++) w[t]=((bytes[off+t*4]<<24)|(bytes[off+t*4+1]<<16)|(bytes[off+t*4+2]<<8)|bytes[off+t*4+3])|0;
+    for(var t=16;t<64;t++){
+      var s0=(rr(w[t-15],7)^rr(w[t-15],18)^(w[t-15]>>>3))|0;
+      var s1=(rr(w[t-2],17)^rr(w[t-2],19)^(w[t-2]>>>10))|0;
+      w[t]=(w[t-16]+s0+w[t-7]+s1)|0;
+    }
+    var a=H[0],b=H[1],c=H[2],d=H[3],e=H[4],f=H[5],g=H[6],h=H[7];
+    for(var t=0;t<64;t++){
+      var S1=(rr(e,6)^rr(e,11)^rr(e,25))|0;
+      var ch=((e&f)^((~e)&g))|0;
+      var t1=(h+S1+ch+K[t]+w[t])|0;
+      var S0=(rr(a,2)^rr(a,13)^rr(a,22))|0;
+      var mj=((a&b)^(a&c)^(b&c))|0;
+      var t2=(S0+mj)|0;
+      h=g; g=f; f=e; e=(d+t1)|0; d=c; c=b; b=a; a=(t1+t2)|0;
+    }
+    H[0]=(H[0]+a)|0; H[1]=(H[1]+b)|0; H[2]=(H[2]+c)|0; H[3]=(H[3]+d)|0;
+    H[4]=(H[4]+e)|0; H[5]=(H[5]+f)|0; H[6]=(H[6]+g)|0; H[7]=(H[7]+h)|0;
+  }
+  var out='';
+  for(var i=0;i<8;i++){ var x=H[i]>>>0; out+=('0000000'+x.toString(16)).slice(-8); }
+  return out;
+}
+var DEFAULT_PW_HASH='240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9'; /* sha256('admin123') */
+var UNSYNCED_KEEP_MS=7*24*3600*1000; /* never-synced local books are kept for 7 days, then dropped */
+function googleAdminSignedIn(){ try{ return !!(typeof firebaseAuth!=='undefined' && firebaseAuth && firebaseAuth.currentUser); }catch(e){ return false; } }
+function storedPwHash(){
+  var h=null;
+  try{ h=settings.adminPwHash||null; }catch(e){}
+  if(h && /^[0-9a-f]{64}$/.test(h)) return h;
+  var v=null;
+  try{ v=localStorage.getItem(LS_PW); }catch(e){}
+  if(v && /^[0-9a-f]{64}$/.test(v)) return v;
+  if(v){ var hh=sha256hex(v); try{ localStorage.setItem(LS_PW, hh); }catch(e){} return hh; }
+  return DEFAULT_PW_HASH;
+}
+function pwMatches(plain){ try{ return sha256hex(plain||'')===storedPwHash(); }catch(e){ return false; } }
+
+/* ---- Admin status lines ---- */
+function updatePwSyncLine(){
+  var el=document.getElementById('pwSyncLine');
+  if(!el){ var box=document.getElementById('changePwBox'); if(!box) return; el=document.createElement('p'); el.id='pwSyncLine'; el.className='text-[11px] text-gray-500'; box.appendChild(el); }
+  var signedIn=googleAdminSignedIn();
+  var cloud=false; try{ cloud=!!(settings.adminPwHash && settings.adminPwHash!==DEFAULT_PW_HASH); }catch(e){}
+  if(cloud){ el.textContent = signedIn ? 'Password: cloud se synced hai — har browser me same password chalega.' : 'Password: cloud me save hai. Naya password badalne par sync ke liye Google se Admin login karein.'; }
+  else { el.textContent = signedIn ? 'Password: abhi sirf is browser me set hai — badalte hi cloud sync ho jayega.' : 'Password: abhi sirf is browser me set hai — Google se Admin login karein, phir password badlein to wo har browser me chalega.'; }
+  if(signedIn){ el.textContent += ' Google se login hain — purana password bhul gaye hon to bhi naya password set kar sakte hain.'; }
+}
+function updateBookSyncLine(){
+  var el=document.getElementById('bookSyncLine');
+  if(!el){ var tab=document.getElementById('tab-books'); if(!tab) return; el=document.createElement('p'); el.id='bookSyncLine'; el.className='text-[11px] font-semibold text-gray-500 mt-2'; tab.insertBefore(el, tab.firstChild); }
+  var s=window._bookSync||{state:'unknown',msg:''};
+  if(s.state==='ok'){ el.textContent='Cloud Sync: '+s.msg; el.className='text-[11px] font-semibold text-green-700 mt-2'; }
+  else if(s.state==='fail'){ el.textContent='Cloud Sync: '+s.msg; el.className='text-[11px] font-semibold text-red-600 mt-2'; }
+  else if(s.state==='off'){ el.textContent='Cloud Sync: '+s.msg; el.className='text-[11px] font-semibold text-amber-700 mt-2'; }
+  else { el.textContent='Cloud Sync: abhi check nahi hua — book save karte hi status yahan dikhega.'; el.className='text-[11px] font-semibold text-gray-500 mt-2'; }
+}
+
+/* ---- Password: hash compare + cloud sync ---- */
+doLogin = function(){
+  var v=document.getElementById('adminPw').value;
+  if(pwMatches(v)){ sessionStorage.setItem('msp_admin','1'); closeModal('loginModal'); openAdminPanel(); toast('Welcome back, Dayashankar Singh ji. Admin unlocked.'); return; }
+  if(typeof loadCloudSettings==='function'){
+    try{
+      var p=loadCloudSettings();
+      if(p && typeof p.then==='function'){
+        p.then(function(){
+          if(pwMatches(v)){ sessionStorage.setItem('msp_admin','1'); closeModal('loginModal'); openAdminPanel(); toast('Welcome back, Dayashankar Singh ji. Admin unlocked.'); }
+          else { document.getElementById('loginErr').classList.remove('hidden'); document.getElementById('adminPw').select(); }
+        }).catch(function(){ document.getElementById('loginErr').classList.remove('hidden'); document.getElementById('adminPw').select(); });
+        return;
+      }
+    }catch(e){}
+  }
+  document.getElementById('loginErr').classList.remove('hidden'); document.getElementById('adminPw').select();
+};
+changePassword = function(){
+  var oldV=document.getElementById('pwOld').value, nw=document.getElementById('pwNew').value;
+  var googleAdmin=googleAdminSignedIn();
+  if(!googleAdmin && !pwMatches(oldV)){ toast('Current password is wrong.', false); return; }
+  if(!nw||nw.length<6){ toast('New password must be at least 6 characters.', false); return; }
+  var h=sha256hex(nw);
+  try{ localStorage.setItem(LS_PW, h); }catch(e){}
+  settings.adminPwHash=h;
+  saveSettingsLS();
+  document.getElementById('pwOld').value=''; document.getElementById('pwNew').value='';
+  if(googleAdmin){ toast('Admin password updated — cloud se sync ho raha hai, ab har browser me naya password chalega.'); }
+  else { toast('Password IS browser me badal gaya hai. Dusre browsers me naya password tabhi chalega jab aap Google se Admin login karke dobara save karein — warna wahan purana password hi chalega.', false); }
+  updatePwSyncLine();
+};
+
+/* ---- Covers: Google Drive links -> direct image links ---- */
+function coverUrl(u){
+  if(!u) return u;
+  var s=String(u).trim();
+  var m=s.match(/drive\.google\.com\/file\/d\/([^\/\?#]+)/);
+  if(m) return 'https://drive.google.com/uc?export=view&id='+m[1];
+  m=s.match(/drive\.google\.com\/open\?[^#]*[?&]id=([^&#]+)/);
+  if(m) return 'https://drive.google.com/uc?export=view&id='+m[1];
+  m=s.match(/drive\.google\.com\/uc\?[^#]*[?&]id=([^&#]+)/);
+  if(m) return 'https://drive.google.com/uc?export=view&id='+m[1];
+  if(s.indexOf('drive.google.com')!==-1){
+    m=s.match(/[?&]id=([^&#]+)/);
+    if(m) return 'https://drive.google.com/uc?export=view&id='+m[1];
+  }
+  return s;
+}
+function normaliseBookCovers(){
+  var changed=false;
+  (books||[]).forEach(function(b){ if(b && b.cover){ var n=coverUrl(b.cover); if(n!==b.cover){ b.cover=n; changed=true; } } });
+  return changed;
+}
+const _v18onCoverUrl = onCoverUrl;
+onCoverUrl = function(){
+  try{ var u=document.getElementById('fCoverUrl'); if(u && u.value){ var n=coverUrl(u.value); if(n!==u.value) u.value=n; } }catch(e){}
+  _v18onCoverUrl();
+};
+
+/* ---- Books sync: failures are reported, never swallowed ---- */
+syncBookToFirestore = async function(book){
+  if(!firestoreOn()){ window._bookSync={state:'off', msg:'Firestore Sync OFF hai (Tab 3) — book sirf is browser me save hogi.'}; updateBookSyncLine(); return false; }
+  try{
+    await db.collection('books').doc(book.id).set(Object.assign({}, book, {cover:(book.cover||'').indexOf('data:')===0?'':book.cover, deliveryUrl:(book.deliveryUrl||'').indexOf('data:')===0?'':book.deliveryUrl, updatedAt:new Date().toISOString()}));
+    book._synced=true;
+    window._bookSync={state:'ok', msg:'Cloud synced ✓ '+new Date().toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit'})+' — book website par sabko dikhegi.'};
+    updateBookSyncLine(); return true;
+  }catch(e){
+    window._bookSync={state:'fail', msg:'Cloud sync FAIL hua ('+((e&&e.code)?e.code:(e&&e.message?e.message:'permission denied'))+') — Google se Admin login karein, phir dobara Save karein.'};
+    updateBookSyncLine(); return false;
+  }
+};
+syncAllBooksToFirestore = async function(){
+  if(!firestoreOn()){ window._bookSync={state:'off', msg:'Firestore Sync OFF hai (Tab 3) — book sirf is browser me save hogi.'}; updateBookSyncLine(); return false; }
+  var ok=true;
+  for(var i=0;i<books.length;i++){ var r=false; try{ r=await syncBookToFirestore(books[i]); }catch(e){ r=false; } if(!r) ok=false; }
+  try{ localStorage.setItem(LS_BOOKS, JSON.stringify(books)); }catch(e){}
+  if(!ok){ window._bookSync={state:'fail', msg:'Cloud sync FAIL hua — kuch books cloud me save nahi hui. Google se Admin login karein, phir dobara Save karein.'}; updateBookSyncLine(); }
+  return ok;
+};
+saveBooks = function(){
+  try{ _v3saveBooks(); }catch(e){ toast('Browser storage full ho gaya — book cloud par save ho rahi hai, is browser me purani save nahi hui.', false); }
+  if(firestoreOn()) syncAllBooksToFirestore();
+  try{ if(typeof renderFreeSection==='function') renderFreeSection(); }catch(e){}
+};
+
+/* ---- Books loader: never-synced recent books survive; synced deletions stay deleted ---- */
+function _v19isRecentUnsynced(b){
+  return !!(b && b.id && !b._synced && b.created && (Date.now()-b.created)<UNSYNCED_KEEP_MS);
+}
+loadBooksFromFirestore = async function(){
+  if(!firestoreOn()) return;
+  try{
+    var snap=await db.collection('books').get();
+    var localById={}; (books||[]).forEach(function(b){ if(b && b.id) localById[b.id]=b; });
+    if(snap.empty){
+      var _now=Date.now();
+      var _seeds=(typeof SEED_BOOKS!=='undefined') ? SEED_BOOKS.map(function(s){ return Object.assign({}, s); }) : [];
+      var _keep={}; var _out=[];
+      _seeds.concat((books||[]).filter(_v19isRecentUnsynced)).forEach(function(b){ if(b && b.id && !_keep[b.id]){ _keep[b.id]=1; _out.push(b); } });
+      books=_out; normaliseBookCovers(); saveBooks(); renderBooks(); renderPills(); return;
+    }
+    var remote=[]; snap.forEach(function(d){ var b=d.data(); if(b && b.title) remote.push(b); });
+    if(!remote.length) return;
+    var byId={}; remote.forEach(function(b){ byId[b.id]=b; });
+    var merged=remote.map(function(b){
+      var seed=(typeof SEED_BOOKS!=='undefined') ? SEED_BOOKS.find(function(s){ return s.id===b.id; }) : null;
+      var out=Object.assign({cover:(typeof FALLBACK_COVER!=='undefined'?FALLBACK_COVER:''), deliveryUrl:'', printLink:'', printPlatform:'Amazon', bestseller:false}, b);
+      out._synced=true;
+      if(seed){
+        var fb=(typeof FALLBACK_COVER!=='undefined'?FALLBACK_COVER:'');
+        if(!out.cover || out.cover===fb || (out.cover||'').indexOf('images/bpsc-history-cover.png')!==-1) out.cover=seed.cover||out.cover;
+        if(!out.deliveryUrl && seed.deliveryUrl) out.deliveryUrl=seed.deliveryUrl;
+        if(!out.desc && seed.desc) out.desc=seed.desc;
+      }
+      var lb=localById[b.id];
+      if((!out.cover || out.cover===FALLBACK_COVER) && lb && lb.cover && lb.cover!==FALLBACK_COVER) out.cover=lb.cover;
+      out.cover=coverUrl(out.cover);
+      return out;
+    });
+    if(typeof SEED_BOOKS!=='undefined'){
+      SEED_BOOKS.forEach(function(s){ if(!byId[s.id]) merged.push(Object.assign({}, s)); });
+    }
+    var mergedIds={}; merged.forEach(function(b){ mergedIds[b.id]=1; });
+    (books||[]).forEach(function(b){
+      if(b && b.id && !mergedIds[b.id] && _v19isRecentUnsynced(b)){ merged.push(b); mergedIds[b.id]=1; }
+    });
+    books=merged; normaliseBookCovers(); saveBooks(); renderBooks(); renderPills();
+    if(!document.getElementById('adminPanel').classList.contains('hidden')) renderAdmin();
+  }catch(e){}
+};
+
+/* ---- Save: normalise the cover first, warn at once if the cloud push cannot happen ---- */
+const _v18saveBook = saveBook;
+saveBook = function(ev){
+  try{
+    var fc=document.getElementById('fCover'); if(fc && fc.value) fc.value=coverUrl(fc.value);
+    var fu=document.getElementById('fCoverUrl'); if(fu && fu.value) fu.value=coverUrl(fu.value);
+  }catch(e){}
+  var beforeCount=books.length, fid='';
+  try{ fid=document.getElementById('fId').value; }catch(e){}
+  _v18saveBook(ev);
+  var saved=false;
+  try{ saved = fid ? books.some(function(b){ return b.id===fid; }) : (books.length>beforeCount); }catch(e){}
+  if(!saved) return;
+  var on=false; try{ on=firestoreOn(); }catch(e){}
+  if(!on){ toast('Book is browser me save hui hai (Firestore Sync OFF hai — Tab 3). Dusre browser/website par dikhane ke liye Firestore Sync ON karein.', false); return; }
+  if(!googleAdminSignedIn()){ toast('Book is browser me save hui hai, par cloud sync nahi hogi — Google se Admin login ke bina Firestore likhne nahi deta. Website par sabko dikhane ke liye pehle Google se Admin login karein, phir book ko dobara Save karein.', false); }
+};
+
+/* ---- Hide the customer-facing mode badge (no more "Live Firebase Mode — real OTP") ---- */
+const _v18initFirebase = initFirebase;
+initFirebase = function(){
+  _v18initFirebase();
+  try{ var b=document.getElementById('authModeBadge'); if(b) b.style.display='none'; }catch(e){}
+};
+
+/* ---- Google sign-in (admin or customer) on this device: push this browser's
+   password hash + unsynced books to the cloud automatically, so one sign-in
+   heals both the password and the book list without another save. ---- */
+function v19afterGoogleSignIn(){
+  try{
+    if(!googleAdminSignedIn()) return;
+    var lh=storedPwHash();
+    if(lh && lh!==DEFAULT_PW_HASH && (!settings.adminPwHash || settings.adminPwHash!==lh)){
+      settings.adminPwHash=lh; saveSettingsLS(); updatePwSyncLine();
+    }
+    setTimeout(function(){ try{ if(typeof loadBooksFromFirestore==='function') loadBooksFromFirestore(); }catch(e){} }, 1200);
+  }catch(e){}
+}
+if(typeof googleAdminLogin==='function'){
+  const _v18googleAdminLogin = googleAdminLogin;
+  googleAdminLogin = async function(){ try{ await _v18googleAdminLogin(); }catch(e){} v19afterGoogleSignIn(); };
+}
+if(typeof handleFirebaseUser==='function'){
+  const _v18handleFirebaseUser = handleFirebaseUser;
+  handleFirebaseUser = function(u, m){ var r=_v18handleFirebaseUser(u, m); v19afterGoogleSignIn(); return r; };
+}
+
+/* ---- v19 first run: migrate old plain-text password to a hash; fix old Drive links; add hints ---- */
+(function(){
+  try{
+    var v=localStorage.getItem(LS_PW);
+    if(v && !/^[0-9a-f]{64}$/.test(v)){ localStorage.setItem(LS_PW, sha256hex(v)); }
+  }catch(e){}
+  try{ if(settings.adminPwHash && /^[0-9a-f]{64}$/.test(settings.adminPwHash)){ localStorage.setItem(LS_PW, settings.adminPwHash); } }catch(e){}
+  try{ var b=document.getElementById('authModeBadge'); if(b) b.style.display='none'; }catch(e){}
+  try{
+    if(normaliseBookCovers()){ try{ saveBooks(); }catch(e){} try{ renderBooks(); renderPills(); }catch(e){} }
+  }catch(e){}
+  try{
+    var cu=document.getElementById('fCoverUrl');
+    if(cu && !document.getElementById('coverUrlHint')){
+      var hint=document.createElement('p');
+      hint.id='coverUrlHint'; hint.className='text-[11px] text-gray-500 mt-1';
+      hint.textContent='Google Drive link bhi chalega — Drive me file "Anyone with the link" par share honi chahiye, warna cover nahi dikhega.';
+      cu.parentNode.insertBefore(hint, cu.nextSibling);
+    }
+  }catch(e){}
+  updatePwSyncLine(); updateBookSyncLine();
+})();
+</script>
+
 </body>
 </html>
