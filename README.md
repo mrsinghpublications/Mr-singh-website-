@@ -121,6 +121,7 @@ Firebase Hosting cannot block by User-Agent in `firebase.json` alone — use a C
 - **Covers:** Google Drive link paste karne par ab seedha cover dikhega (Drive file "Anyone with the link" par share honi chahiye). Photo upload karne par cover usi browser me dikhega; dusre browsers par dikhane ke liye Tab 3 me File Storage Provider = Firebase Storage karein (Google login ke saath), ya Drive link use karein.
 - **Login screen:** default password ab site par kahin nahi dikhta; Google button par sirf "Login with Google" likha hai.
 - **v19.1 (same evening):** ek aur sudhaar — ab sirf site kholne se purani books cloud mein dobara nahi jayengi; cloud mein book tabhi jayegi jab aap Admin mein Save karein ya Google se Admin login karein.
+- **v19.2 (24 Nov, subah):** cover ka asli kaaran mil gaya — Drive ka `uc?export=view` link browser mein cover ke roop mein khulta hi nahi (Google 403 deta hai), isliye har baar fallback dikhta tha. Ab site Drive link ko Google ke thumbnail link mein badal deti hai, jo browser mein seedha photo ki tarah khulta hai. Aapko kuch dobara karne ki zaroorat nahi — pehle se laga hua cover link ab apne aap dikhne lagega.
 - Verified: 32/32 automated checks (multi-browser simulation, Firestore rules ke saath) — SPEC.md v19 dekhein.
 - All inline scripts pass `node --check` (7 scripts), zero `TODO` strings. v7: Razorpay Checkout SDK added, Firebase diagnosis + redirect fallback added.
 - Glass values match SPEC.md exactly: `rgba(255,255,255,0.78)`, blur 18px, border `rgba(212,175,55,0.32)`.
