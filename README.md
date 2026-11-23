@@ -120,6 +120,7 @@ Firebase Hosting cannot block by User-Agent in `firebase.json` alone — use a C
 - **Books:** Admin me publish ki hui book ab website par tab dikhegi jab Google se Admin login ho (warna cloud me save hi nahi hoti — pehle ye chupchaap fail ho jata tha, ab Admin me saaf warning aati hai). **Upload ke baad pehle USI browser me site kholein jisme book publish ki thi, Google se Admin login karein — book apne aap cloud me chali jayegi.**
 - **Covers:** Google Drive link paste karne par ab seedha cover dikhega (Drive file "Anyone with the link" par share honi chahiye). Photo upload karne par cover usi browser me dikhega; dusre browsers par dikhane ke liye Tab 3 me File Storage Provider = Firebase Storage karein (Google login ke saath), ya Drive link use karein.
 - **Login screen:** default password ab site par kahin nahi dikhta; Google button par sirf "Login with Google" likha hai.
+- **v19.1 (same evening):** ek aur sudhaar — ab sirf site kholne se purani books cloud mein dobara nahi jayengi; cloud mein book tabhi jayegi jab aap Admin mein Save karein ya Google se Admin login karein.
 - Verified: 32/32 automated checks (multi-browser simulation, Firestore rules ke saath) — SPEC.md v19 dekhein.
 - All inline scripts pass `node --check` (7 scripts), zero `TODO` strings. v7: Razorpay Checkout SDK added, Firebase diagnosis + redirect fallback added.
 - Glass values match SPEC.md exactly: `rgba(255,255,255,0.78)`, blur 18px, border `rgba(212,175,55,0.32)`.

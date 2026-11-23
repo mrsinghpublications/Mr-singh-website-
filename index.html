@@ -2829,7 +2829,7 @@ async function payWithCashfreeFunction(bookId){
      (Admin Tab 3 setup text is unchanged — the admin needs it.)
    NOTE: the password gate is still client-side only (as before) — Google Admin
    Login remains the real gate for cloud writes. Backup: index-v18.html.
-   sw.js cache msp-v18 -> msp-v19. */
+   sw.js cache msp-v18 -> msp-v19 (v19.1: msp-v19-1). v19.1, same evening: the loader no longer pushes unsynced books to the cloud on a plain page load — a stale test browser re-seeded the 2 deleted books (History, Kaidi) into Firestore at 21:25 IST; pushes now happen only on an explicit save or an explicit Google sign-in. */
 function sha256hex(str){
   var K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
   var H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
@@ -2987,6 +2987,15 @@ saveBooks = function(){
   if(firestoreOn()) syncAllBooksToFirestore();
   try{ if(typeof renderFreeSection==='function') renderFreeSection(); }catch(e){}
 };
+/* v19.1: the loader must NEVER push to the cloud on a plain page load — a stale
+   browser (e.g. a test browser with old local books) would otherwise re-seed
+   deleted books into Firestore, as happened on 23 Nov 21:25 IST. Cloud pushes
+   happen only on an explicit save (saveBooks) or an explicit Google sign-in
+   (v19afterGoogleSignIn). */
+function saveBooksLocal(){
+  try{ _v3saveBooks(); }catch(e){ toast('Browser storage full ho gaya — book is browser me save nahi hui.', false); }
+  try{ if(typeof renderFreeSection==='function') renderFreeSection(); }catch(e){}
+}
 
 /* ---- Books loader: never-synced recent books survive; synced deletions stay deleted ---- */
 function _v19isRecentUnsynced(b){
@@ -3002,7 +3011,7 @@ loadBooksFromFirestore = async function(){
       var _seeds=(typeof SEED_BOOKS!=='undefined') ? SEED_BOOKS.map(function(s){ return Object.assign({}, s); }) : [];
       var _keep={}; var _out=[];
       _seeds.concat((books||[]).filter(_v19isRecentUnsynced)).forEach(function(b){ if(b && b.id && !_keep[b.id]){ _keep[b.id]=1; _out.push(b); } });
-      books=_out; normaliseBookCovers(); saveBooks(); renderBooks(); renderPills(); return;
+      books=_out; normaliseBookCovers(); saveBooksLocal(); renderBooks(); renderPills(); return;
     }
     var remote=[]; snap.forEach(function(d){ var b=d.data(); if(b && b.title) remote.push(b); });
     if(!remote.length) return;
@@ -3029,7 +3038,7 @@ loadBooksFromFirestore = async function(){
     (books||[]).forEach(function(b){
       if(b && b.id && !mergedIds[b.id] && _v19isRecentUnsynced(b)){ merged.push(b); mergedIds[b.id]=1; }
     });
-    books=merged; normaliseBookCovers(); saveBooks(); renderBooks(); renderPills();
+    books=merged; normaliseBookCovers(); saveBooksLocal(); renderBooks(); renderPills();
     if(!document.getElementById('adminPanel').classList.contains('hidden')) renderAdmin();
   }catch(e){}
 };
@@ -3069,7 +3078,13 @@ function v19afterGoogleSignIn(){
     if(lh && lh!==DEFAULT_PW_HASH && (!settings.adminPwHash || settings.adminPwHash!==lh)){
       settings.adminPwHash=lh; saveSettingsLS(); updatePwSyncLine();
     }
-    setTimeout(function(){ try{ if(typeof loadBooksFromFirestore==='function') loadBooksFromFirestore(); }catch(e){} }, 1200);
+    setTimeout(function(){
+      try{
+        var p=(typeof loadBooksFromFirestore==='function') ? loadBooksFromFirestore() : null;
+        var done=function(){ try{ if(typeof syncAllBooksToFirestore==='function') syncAllBooksToFirestore(); }catch(e){} };
+        if(p && typeof p.then==='function') p.then(done, done); else done();
+      }catch(e){}
+    }, 1200);
   }catch(e){}
 }
 if(typeof googleAdminLogin==='function'){
@@ -3090,7 +3105,7 @@ if(typeof handleFirebaseUser==='function'){
   try{ if(settings.adminPwHash && /^[0-9a-f]{64}$/.test(settings.adminPwHash)){ localStorage.setItem(LS_PW, settings.adminPwHash); } }catch(e){}
   try{ var b=document.getElementById('authModeBadge'); if(b) b.style.display='none'; }catch(e){}
   try{
-    if(normaliseBookCovers()){ try{ saveBooks(); }catch(e){} try{ renderBooks(); renderPills(); }catch(e){} }
+    if(normaliseBookCovers()){ try{ saveBooksLocal(); }catch(e){} try{ renderBooks(); renderPills(); }catch(e){} }
   }catch(e){}
   try{
     var cu=document.getElementById('fCoverUrl');
