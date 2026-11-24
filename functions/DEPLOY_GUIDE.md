@@ -113,10 +113,7 @@ phone par bhi). Sirf publisher (admin email) bhej sakta hai.
    baad uska token Firestore `pushTokens` me save hota hai; Admin tab me
    "Push subscribers: N device(s)" dikhega.
 
-**Blaze zaroori hai ya nahi?** FCM Google service hai, isliye ye function
-**Spark (free) plan par bhi chalna chahiye** — Cashfree wali Blaze zaroorat
-is par lagu nahi hoti. Deploy karke test karein; agar function
-"outbound networking blocked" jaisi error de to Blaze check karein.
+**Blaze zaroori hai ya nahi?** HAAN, zaroori hai — ye pehle galat likha tha, 24 Nov 2026 ko deploy karke verify hua: Cloud Functions deploy karne ke liye Cloud Build API chahiye, jo Spark (free) plan par enable nahi hoti. Deploy karte hi error aata hai — "Your project must be on the Blaze (pay-as-you-go) plan". FCM khud free hai, par **deploy ke liye Blaze (pay-as-you-go) chahiye** — ye Cashfree function par bhi lagu hai aur sendPushBroadcast par bhi. Upgrade ke baad hi `firebase deploy --only functions:sendPushBroadcast` chalega. Blaze me free limit milti hai (har mahine 2 million function calls free), isliye is chhote function ka kharcha aam taur par free limit ke andar rehta hai — par card add karna hi padega.
 
 **Anonymous sign-in (customers ke liye):** Email/password se login karne
 wale customers Firebase Auth me signed-in nahi hote, isliye unka customer
