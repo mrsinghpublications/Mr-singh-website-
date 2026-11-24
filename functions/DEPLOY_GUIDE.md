@@ -4,11 +4,12 @@ Ye guide `createCashfreeLink` Cloud Function ko live karne ke liye hai.
 Function ka kaam: frontend se bookId + couponCode lekar price calculate karna,
 aur Cashfree se ek fresh dynamic payment link banana.
 
-> **Sabse zaroori baat — Blaze plan:** Firebase ka free **Spark** plan Cloud
-> Function ko sirf Google services se baat karne deta hai. **Cashfree
-> (non-Google) ko call karne ke liye project ko Blaze (pay-as-you-go) par
-> upgrade karna ZAROORI hai.** Bina Blaze ke function deploy ho jayega, par
-> Cashfree call fail hogi ("outbound networking blocked" jaisi error).
+> **Sabse zaroori baat — Blaze plan:** Cloud Functions **deploy karne ke
+> liye hi** project ko Blaze (pay-as-you-go) par upgrade karna ZAROORI hai.
+> Bina Blaze ke deploy fail hota hai — "Your project must be on the Blaze
+> (pay-as-you-go) plan" (Cloud Build API Spark/free plan par enable nahi
+> hoti). Ye Cashfree function par bhi lagu hai aur sendPushBroadcast par
+> bhi — 24 Nov 2026 ko deploy karke verify hua.
 > Blaze me bhi free limit milti hai (har mahine 2 million function calls free,
 > uske baad bahut chhota charge) — ek chhoti dukaan ke liye aam taur par
 > bill ₹0 ya kuch rupay ke aas-paas rehta hai. Billing card lagana padta hai,
@@ -29,7 +30,9 @@ aur Cashfree se ek fresh dynamic payment link banana.
    budget (e.g. ₹500/month) with 50% / 100% email alerts.
 
 ## Step 2 — Computer par Firebase CLI set karein
-Computer par Node.js 20+ aur Firebase CLI chahiye:
+Computer par Node.js 22 aur Firebase CLI chahiye (Node.js 20 Firebase par
+30 Oct 2026 ko band ho chuka hai — `functions/package.json` me engines
+node 22 hai):
 ```bash
 npm install -g firebase-tools
 firebase login            # Google account: dssmauryaofficial@gmail.com
@@ -47,11 +50,25 @@ firebase functions:secrets:set CASHFREE_CLIENT_SECRET
   (Live wali — test/sandbox wali nahi).
 - Test karna ho to pehle sandbox: `firebase functions:params:set CASHFREE_ENV sandbox`
   (live par wapas aane ke liye: `firebase functions:params:set CASHFREE_ENV live`).
+- Secret Console se bhi banaya ja sakta hai: Google Cloud Console →
+  Secret Manager → Create secret → Name `CASHFREE_CLIENT_SECRET` → value
+  me Secret Key (project owner account se — mr-singh-publications project
+  dssmauryaofficial@gmail.com ka hai).
+- Dhyaan dein: deploy karte waqt Firebase poore codebase ke saare secrets
+  check karta hai — secret exist nahi karta to sirf sendPushBroadcast ka
+  deploy bhi fail hoga (Secret Manager 403 error).
 
 ## Step 4 — Deploy karein
 ```bash
+cd functions && npm install && cd ..
 firebase deploy --only functions
 ```
+- Deploy se pehle `functions/` folder me `npm install` zaroori hai, warna
+  "Couldn't find firebase-functions package" error aata hai.
+- Deploy ke waqt CLI params maangega: `CASHFREE_ENV` (live) aur
+  `ADMIN_EMAIL` (mrsinghpublications@gmail.com) — defaults accept karein.
+  Ye values `functions/.env.mr-singh-publications-5e60c` me save hoti hain
+  (ye file repo me nahi jati).
 - Pehli baar me 1–2 minute lagte hain. Deploy ke baad function ka naam dikhega:
   `createCashfreeLink(asia-south1)`.
 - Function URL ka format: `https://asia-south1-mr-singh-publications-5e60c.cloudfunctions.net/createCashfreeLink`
@@ -80,6 +97,9 @@ firebase deploy --only functions
 ## Agar kuch gadbad ho
 | Error / lakshan | Matlab / fix |
 |---|---|
+| `Runtime Node.js 20 was decommissioned ...` | Node 20 band ho chuka hai — `functions/package.json` me engines node 22 karein. |
+| `Couldn't find firebase-functions package ...` | `functions/` folder me `npm install` karein, phir deploy karein. |
+| `Secret Manager API ... 403` / `CASHFREE_CLIENT_SECRET` | Secret exist nahi karta — Step 3 karein (CLI ya Console se). |
 | `failed-precondition: ... Blaze ...` ya function Cashfree call par fail | Blaze upgrade nahi hua — Step 1 karein. |
 | `Cashfree is not configured ... (Client ID / Secret missing)` | Secret set nahi hai (Step 3) ya Admin Tab 3 me Cashfree App ID khaali hai. |
 | `Coupon code not found` | Coupon Firestore me sync nahi hua — Admin login karke Tab 5 me coupon dobara Save karein. |
@@ -120,6 +140,12 @@ wale customers Firebase Auth me signed-in nahi hote, isliye unka customer
 record aur push token Firestore me tabhi likha jata hai jab Firebase Console
 → Authentication → Sign-in method → **Anonymous** ON ho. Google / Phone
 login wale customers ko iski zaroorat nahi hai.
+
+**Status 24 Nov 2026:** sendPushBroadcast **DEPLOY ho gaya aur verify hua**
+— v2, callable, asia-south1, 256 MB, Node.js 22 runtime
+(`firebase functions:list` se verify, 12:07 IST). createCashfreeLink abhi
+deploy NAHI hua hai (secret ab set hai — deploy karne par wo bhi live ho
+jayega; Admin Tab 3 ka checkbox abhi bhi OFF hai).
 
 **Test kaise karein:**
 1. Apne phone par store kholein → bell icon → "Enable Push Notifications" →
