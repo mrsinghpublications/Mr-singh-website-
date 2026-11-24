@@ -1,0 +1,67 @@
+rules_version = '2';
+
+// Mr Singh Publications bookstore — Firestore security rules (v19.5.7)
+// ======================================================================
+// Ye file pehle repo me thi hi nahi — rules sirf Firebase Console me the.
+// v19.5.7 FIX: `coupons` collection ke liye koi rule nahi tha, isliye Admin
+// se coupon banate hi cloud likhne se mana kar deta tha ("Missing or
+// insufficient permissions") aur payment function coupon ko kabhi nahi
+// dhoondh pata tha ("Coupon code not found"). Neeche har collection ke
+// liye wahi permission likhi hai jo site ko chahiye — books/config sirf
+// Admin badal sakta hai, customers/orders/pushTokens/ebookRequests koi bhi
+// signed-in user (Google/Phone/Email ya anonymous) likh sakta hai, aur
+// payment ki asli jaanch Cloud Function server par karta hai, in rules
+// par nahi. Koi bhi collection is file me aaye bina kaam nahi karega —
+// naya collection add karte waqt yahan uska rule bhi add karna zaroori hai.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'mrsinghpublications@gmail.com';
+    }
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Store catalogue — sab padh sakte hain, sirf Admin badal sakta hai.
+    match /books/{bookId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Coupons — v19.5.7: ye rule missing tha, isliye coupon kabhi cloud
+    // tak pahuncha hi nahi. Sirf Admin likhta hai; signed-in users padhte hain.
+    match /coupons/{couponId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Customer profiles — signed-in user (Admin bhi).
+    match /customers/{customerId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Orders — signed-in user (Admin bhi). Payment ki jaanch Cloud
+    // Function server par karta hai.
+    match /orders/{orderId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Store settings — sab padh sakte hain, sirf Admin badal sakta hai.
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Push notification tokens — signed-in user likhta hai, Admin gin ta hai.
+    match /pushTokens/{tokenId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // eBook requests (email se eBook maangne wale) — signed-in user.
+    match /ebookRequests/{requestId} {
+      allow read, write: if isSignedIn();
+    }
+  }
+}
