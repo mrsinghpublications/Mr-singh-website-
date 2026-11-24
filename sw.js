@@ -1,5 +1,5 @@
 /* Mr Singh Publications — Service Worker (PWA offline shell + push) */
-const CACHE = 'msp-v19-2';
+const CACHE = 'msp-v19-3';
 const CORE = ['index.html', 'logo.png', 'icon.jpg', 'manifest.json'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).catch(() => {}));
@@ -23,16 +23,18 @@ self.addEventListener('fetch', (e) => {
     );
   }
 });
-/* Push notifications (FCM): shows the notification even when the site is closed. */
+/* Push notifications (FCM): shows the notification even when the site is closed.
+   v19.3: FCM ka payload `notification: {title, body}` ke andar aata hai (flat
+   title/body nahi) — dono formats padhe jate hain, warna galat (default) text dikhta. */
 self.addEventListener('push', (e) => {
   let data = { title: 'Mr Singh Publications', body: 'Aapke liye ek nayi khabar hai!' };
-  try { if (e.data) data = Object.assign(data, e.data.json()); } catch (_) {}
+  try { if (e.data) { const raw = e.data.json(); const n = (raw && raw.notification) ? raw.notification : raw; data = Object.assign(data, n); } } catch (_) {}
   e.waitUntil(self.registration.showNotification(data.title, {
     body: data.body,
     icon: 'icon.jpg',
     badge: 'icon.jpg',
     tag: 'msp-notif',
-    data: { url: data.url || '/' }
+    data: { url: data.url || (data.fcmOptions && data.fcmOptions.link) || '/' }
   }));
 });
 self.addEventListener('notificationclick', (e) => {

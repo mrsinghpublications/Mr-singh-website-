@@ -991,6 +991,68 @@ let users=[], sessionUser=null, orders=[], pendingOtp=null, pendingBuy=null, fir
 function loadAuthData(){ try{ users=JSON.parse(localStorage.getItem(LS_USERS)||'[]'); }catch(e){ users=[]; } try{ orders=JSON.parse(localStorage.getItem(LS_ORDERS)||'[]'); }catch(e){ orders=[]; } try{ const s=JSON.parse(localStorage.getItem(LS_SESSION)||'null'); sessionUser=s?users.find(u=>u.id===s.id)||null:null; }catch(e){ sessionUser=null; } }
 function saveUsers(){ localStorage.setItem(LS_USERS, JSON.stringify(users)); }
 function saveOrders(){ localStorage.setItem(LS_ORDERS, JSON.stringify(orders)); }
+/* ================= v19.3: CUSTOMERS FIRESTORE SYNC =================
+   Pehle customers sirf usi browser ke localStorage (msp_users_v2) me rehte the —
+   koi customer apne phone se login karta to Admin (dusre browser/device) ko wo
+   dikhta hi nahi tha. Ab har login / signup / profile-save par record Firestore
+   `customers` collection me bhi likha jata hai (doc id = identifier: email ya
+   phone — isliye wahi customer kisi bhi browser se login kare, ek hi doc update
+   hota hai), aur Admin Customers tab kholne par cloud se load karke merge karta hai.
+   - Password hash (pwHash) KABHI sync nahi hota; demo accounts bhi nahi.
+   - Google / Phone login pehle se Firebase-signed-in hote hain, isliye unki write
+     seedha chalti hai. Email/password (local) login Firebase Auth me signed-in
+     nahi hota — uske liye _ensureCustomerAuth() anonymous session banata hai
+     (Firebase Console → Authentication → Sign-in method → Anonymous ON hona
+     chahiye; OFF ho to us customer ka sync skip hoga, local record rehta hai).
+   - Orders bhi cloud se load hote hain taaki Admin me Books / Spent sahi dikhe. */
+function _custPublic(u){
+  if(!u) return null;
+  if((u.provider||'').indexOf('demo')!==-1) return null; // demo accounts sync nahi hote
+  const id=String(u.identifier||'').trim().toLowerCase();
+  if(!id || id==='firebase-user' || id==='google-user') return null;
+  const dp=String(u.dp||'');
+  return { id:u.id||('u-'+id), name:u.name||'', identifier:id, email:u.email||(u.type==='email'?id:''), mobile:u.mobile||(u.type==='phone'?id:''), type:u.type||'', provider:u.provider||'', gender:u.gender||'', exam:u.exam||'', address:u.address||'', dp:(dp.length<300000?dp:''), created:u.created||new Date().toISOString(), updatedAt:new Date().toISOString() };
+}
+async function _ensureCustomerAuth(){
+  try{
+    if(typeof firebaseAuth!=='undefined' && firebaseAuth && !firebaseAuth.currentUser && typeof firebase!=='undefined' && firebase.auth){
+      await firebaseAuth.signInAnonymously();
+    }
+  }catch(e){ /* Anonymous sign-in Console me OFF ho to fail hoga — sync skip hoga. */ }
+  try{ return !!(typeof firebaseAuth!=='undefined' && firebaseAuth && firebaseAuth.currentUser); }catch(e){ return false; }
+}
+async function syncCustomerToFirestore(u){
+  try{
+    if(typeof firestoreOn!=='function' || !firestoreOn()) return;
+    const pub=_custPublic(u); if(!pub) return;
+    if(!(typeof firebaseAuth!=='undefined' && firebaseAuth && firebaseAuth.currentUser)){ const ok=await _ensureCustomerAuth(); if(!ok) return; }
+    await db.collection('customers').doc(pub.identifier).set(pub, {merge:true});
+  }catch(e){} // best-effort: local record hamesha rehta hai
+}
+let _custLoading=false, _custLastLoad=0;
+async function loadCustomersFromFirestore(){
+  try{
+    if(typeof firestoreOn!=='function' || !firestoreOn() || _custLoading) return;
+    if(Date.now()-_custLastLoad<30000 && users.length) return; // 30 sec me dobara load nahi
+    _custLoading=true;
+    const snap=await db.collection('customers').get();
+    let changed=false;
+    snap.forEach(function(doc){
+      const c=doc.data()||{}; const key=String(c.identifier||'').trim().toLowerCase(); if(!key) return;
+      const ex=users.find(function(x){ return String(x.identifier||'').trim().toLowerCase()===key; });
+      if(!ex){ users.push({ id:c.id||('u-'+key), name:c.name||'', identifier:key, email:c.email||'', mobile:c.mobile||'', type:c.type||'', provider:c.provider||'', gender:c.gender||'', exam:c.exam||'', address:c.address||'', dp:c.dp||'', created:c.created||new Date().toISOString(), pwHash:'' }); changed=true; }
+      else { let f2=false; ['name','email','mobile','gender','exam','address','dp','provider'].forEach(function(k){ if(c[k] && !ex[k]){ ex[k]=c[k]; f2=true; } }); if(f2) changed=true; }
+    });
+    try{
+      const osnap=await db.collection('orders').get();
+      osnap.forEach(function(doc){ const o=doc.data()||{}; if(!o.id) return; if(!orders.find(function(x){ return x.id===o.id; })){ orders.push(o); changed=true; } });
+    }catch(e){}
+    if(changed){ saveUsers(); saveOrders(); }
+    _custLastLoad=Date.now();
+    renderCustomers(); renderCustDetails();
+  }catch(e){}
+  finally{ _custLoading=false; }
+}
 function saveSession(){ if(sessionUser) localStorage.setItem(LS_SESSION, JSON.stringify({id:sessionUser.id})); else localStorage.removeItem(LS_SESSION); }
 function hashPw(pw){ let h=5381; const s='msp-salt|'+pw; for(let i=0;i<s.length;i++) h=((h<<5)+h+s.charCodeAt(i))>>>0; return 'h'+h.toString(36); }
 function normId(raw){ const v=String(raw||'').trim(); if(!v) return null; if(v.includes('@')) return {type:'email', id:v.toLowerCase(), label:v.toLowerCase()}; const d=v.replace(/\D/g,'').replace(/^91/,''); if(d.length===10) return {type:'phone', id:'+91'+d, label:'+91 '+d}; return null; }
@@ -1078,7 +1140,7 @@ function finishSignup(){
   if(pw!==pw2){ toast('Passwords do not match.', false); return; }
   const norm=normId(pendingOtp?pendingOtp.identifier:''); if(!norm){ toast('Session expired — please start Sign Up again.', false); return; }
   const user={ id:'u-'+Date.now(), name:pendingOtp.name||'Reader', identifier:norm.id, type:norm.type, pwHash:hashPw(pw), provider:firebaseLive?'firebase':'demo-otp', created:new Date().toISOString() };
-  users.push(user); saveUsers(); pendingOtp=null; loginUser(user,'signup'); toast('Account created. Welcome, '+user.name+' ji!');
+  users.push(user); saveUsers(); syncCustomerToFirestore(user); pendingOtp=null; loginUser(user,'signup'); toast('Account created. Welcome, '+user.name+' ji!');
 }
 /* ---- Login ---- */
 function loginWithPassword(){
@@ -1108,7 +1170,7 @@ async function googleLogin(){
   if(firebaseLive && firebaseAuth){
     try{ const provider=new firebase.auth.GoogleAuthProvider(); const res=await firebaseAuth.signInWithPopup(provider); const gu=res.user;
       let u=users.find(x=>x.identifier===(gu.email||'').toLowerCase());
-      if(!u){ u={ id:'u-'+Date.now(), name:gu.displayName||'Google User', identifier:(gu.email||'google-user').toLowerCase(), type:'email', pwHash:'', provider:'google-firebase', created:new Date().toISOString() }; users.push(u); saveUsers(); }
+      if(!u){ u={ id:'u-'+Date.now(), name:gu.displayName||'Google User', identifier:(gu.email||'google-user').toLowerCase(), type:'email', pwHash:'', provider:'google-firebase', created:new Date().toISOString() }; users.push(u); saveUsers(); syncCustomerToFirestore(u); }
       loginUser(u,'google'); return;
     }catch(e){ toast('Google sign-in failed: '+(e.message||'error'), false); return; }
   }
@@ -1167,7 +1229,6 @@ function buyBook(id){
     ? '<a href="'+esc(link)+'" target="_blank" rel="noopener" onclick="window._paidBook=\''+b.id+'\'" class="gold-btn block text-center rounded-full py-3 text-sm font-semibold mt-2"><i class="fa-solid fa-lock mr-2"></i>Pay Securely — '+fmtINR(b.price)+'</a><p class="text-[11px] text-gray-500 text-center mt-2">You will be taken to the secure '+gwName+' payment page in a new tab.</p>'+((d.bulkAmt>0||d.couponAmt>0)?'<p class="text-[11px] text-amber-700 text-center mt-1">Note: discount sirf in-app Razorpay checkout par lagta hai — payment link par full price ('+fmtINR(d.base)+') lagega.</p>':'')
     : '<div class="bg-[#F5EFE6] border border-[rgba(212,175,55,.4)] rounded-2xl p-4 mt-3 text-sm leading-relaxed"><strong>No payment link set yet.</strong><br>Please email the publisher to order this book, or pay via UPI if shared below.</div>')
   +(settings.upi?'<div class="mt-3 flex items-center gap-2"><input readonly value="'+esc(settings.upi)+'" class="inp !text-xs flex-1" onclick="this.select()"><button onclick="copyText(\''+esc(settings.upi)+'\')" class="outline-btn rounded-full px-3 py-2 text-xs font-semibold shrink-0"><i class="fa-regular fa-copy mr-1"></i>Copy UPI</button></div>':'')
-  +'<button onclick="confirmOrder(\''+b.id+'\')" class="gold-btn w-full rounded-full py-3 text-sm font-semibold mt-4"><i class="fa-solid fa-circle-check mr-2"></i>I Have Paid — Confirm My Order</button>'
   +'<button onclick="closeModal(\'payModal\');openProfile()" class="outline-btn w-full rounded-full py-2.5 text-sm font-semibold mt-2"><i class="fa-solid fa-receipt mr-2"></i>View My Orders</button>'
   +'<p class="text-[11px] text-gray-400 text-center mt-3">Payee: '+esc(settings.merchant||'Mr Singh Publications')+' • After payment, email your payment screenshot to mrsinghpublications@gmail.com</p>';
   closeModal('detailsModal'); openModal('payModal');
@@ -1681,12 +1742,12 @@ function showFbDiag(html){
   const fs=document.getElementById('firebaseStatus'); if(fs) fs.textContent='Last Firebase check: '+(html.replace(/<[^>]+>/g,'').slice(0,120));
 }
 function handleFirebaseUser(fbUser, provider){
-  if(!fbUser) return null;
+  if(!fbUser || fbUser.isAnonymous) return null; // anonymous session (customer sync ke liye) se local user nahi banta
   const email=(fbUser.email||'').toLowerCase();
   const phone=fbUser.phoneNumber||'';
   const ident=email||phone;
   let u=users.find(x=>x.identifier===ident);
-  if(!u){ u={ id:'u-'+Date.now(), name:fbUser.displayName||(email?email.split('@')[0]:'Reader'), identifier:ident||'firebase-user', type:email?'email':'phone', pwHash:'', provider:provider||'firebase', created:new Date().toISOString() }; users.push(u); saveUsers(); }
+  if(!u){ u={ id:'u-'+Date.now(), name:fbUser.displayName||(email?email.split('@')[0]:'Reader'), identifier:ident||'firebase-user', type:email?'email':'phone', pwHash:'', provider:provider||'firebase', created:new Date().toISOString() }; users.push(u); saveUsers(); syncCustomerToFirestore(u); }
   loginUser(u, provider||'firebase');
   return u;
 }
@@ -1793,7 +1854,6 @@ function buyBook(id){
     ? '<div class="bg-[#F5EFE6] border border-[rgba(212,175,55,.4)] rounded-2xl p-4 mt-3 text-sm leading-relaxed"><strong>Cashfree App ID saved, par payment link nahi hai.</strong><br>Cashfree ko server se session_id chahiye, isliye sirf App ID se checkout nahi khulta. Admin Tab 3 me Cashfree payment link add karein, ya Razorpay Key ID use karein.</div>'
     : '<div class="bg-[#F5EFE6] border border-[rgba(212,175,55,.4)] rounded-2xl p-4 mt-3 text-sm leading-relaxed"><strong>No payment link set yet.</strong><br>Please email the publisher to order this book, or pay via UPI if shared below.</div>')
   +(settings.upi?'<div class="mt-3 flex items-center gap-2"><input readonly value="'+esc(settings.upi)+'" class="inp !text-xs flex-1" onclick="this.select()"><button onclick="copyText(\''+esc(settings.upi)+'\')" class="outline-btn rounded-full px-3 py-2 text-xs font-semibold shrink-0"><i class="fa-regular fa-copy mr-1"></i>Copy UPI</button></div>':'')
-  +'<button onclick="confirmOrder(\''+b.id+'\')" class="gold-btn w-full rounded-full py-3 text-sm font-semibold mt-4"><i class="fa-solid fa-circle-check mr-2"></i>I Have Paid — Confirm My Order</button>'
   +'<button onclick="closeModal(\'payModal\')" class="outline-btn w-full rounded-full py-2.5 text-sm font-semibold mt-2">Cancel</button>'
   +'<p class="text-[11px] text-gray-400 text-center mt-3">Payee: '+esc(settings.merchant||'Mr Singh Publications')+' • After payment, your eBook + password appear under My Orders.</p>';
   closeModal('detailsModal'); openModal('payModal');
@@ -1848,7 +1908,9 @@ function applyFinalPriceToOrder(o,b){
   o.originalPrice=d.base; o.discountAmt=(d.bulkAmt||0)+(d.couponAmt||0); o.bulkPct=d.bulkPct; o.couponCode=d.coupon?d.coupon.code:''; o.price=d.finalPrice;
   if(d.coupon){ const c=coupons.find(x=>x.code===d.coupon.code); if(c){ c.uses=(c.uses||0)+1; saveCoupons(); } }
   if(window._rzPaymentId){ o.method='razorpay-checkout'; o.paymentId=window._rzPaymentId; }
-  window._appliedCoupon=null; window._finalPrice=null; window._rzPaymentId='';
+  if(window._cfFree){ o.method='cashfree-free'; } // server-verified ₹0 (payWithCashfreeFunction)
+  if(window._cfPaid){ o.method='cashfree-link'; } // return handler ne link_status=PAID verify kiya (finish() method/paymentId baad me update karta hai)
+  window._appliedCoupon=null; window._finalPrice=null; window._rzPaymentId=''; window._cfFree=false; window._cfPaid=false;
   saveOrders();
 }
 function applyCoupon(code, bookId){
@@ -1909,22 +1971,37 @@ async function enablePush(){
     const token=await messaging.getToken({ vapidKey:(settings.fcmVapid||'').trim()||undefined });
     let toks=[]; try{ toks=JSON.parse(localStorage.getItem(LS_FCMTOKENS)||'[]'); }catch(e){}
     if(token && !toks.includes(token)){ toks.push(token); localStorage.setItem(LS_FCMTOKENS, JSON.stringify(toks)); }
-    toast('Push notifications enabled on this device.');
+    // v19.3: token Firestore `pushTokens` me bhi likho — tabhi Admin sabhi devices
+    // ko real push bhej payega (pehle token sirf is device ke localStorage me tha).
+    if(token){ try{ if(typeof firestoreOn==='function' && firestoreOn()){ if(!(typeof firebaseAuth!=='undefined' && firebaseAuth && firebaseAuth.currentUser)) await _ensureCustomerAuth(); if(firebaseAuth && firebaseAuth.currentUser){ await db.collection('pushTokens').doc(token).set({ token:token, userId:(sessionUser&&sessionUser.id)||'', created:new Date().toISOString() }, {merge:true}); } } }catch(e){} }
+    toast('Push notifications enabled on this device. Admin ki notifications ab aapke phone par aayengi.');
   }catch(e){ toast('Push enable nahi hua: '+(e.message||'error')+'. VAPID key check karein (Admin → Notifications).', false); }
 }
-function sendNotificationAdmin(){
+async function sendNotificationAdmin(){
   const title=document.getElementById('ntTitle').value.trim(); const body=document.getElementById('ntBody').value.trim();
   if(!title){ toast('Notification title likhna zaroori hai.', false); return; }
   addNotification(title, body, 'admin');
   document.getElementById('ntTitle').value=''; document.getElementById('ntBody').value='';
   renderNotifAdmin();
-  toast('Notification sabhi app users ko bhej di gayi (in-app).');
+  // v19.3: asli push — Cloud Function sendPushBroadcast (functions/DEPLOY_GUIDE.md).
+  // In-app notification upar bhej di gayi; ye uske ALAWA phone par push bhejta hai.
+  try{
+    const authed=(typeof firebaseAuth!=='undefined' && firebaseAuth && firebaseAuth.currentUser);
+    if(!authed){ toast('In-app notification bhej di gayi. Real push ke liye Google se Admin login karein.', false); return; }
+    const fns=(typeof cfFunctions==='function')?cfFunctions():null;
+    if(!fns){ toast('In-app notification bhej di gayi. Real push ke liye Cloud Function deploy karein (functions/DEPLOY_GUIDE.md).', false); return; }
+    const res=await fns.httpsCallable('sendPushBroadcast')({title:title, body:body});
+    const d=res&&res.data?res.data:{};
+    toast('Push: '+(d.sent||0)+' / '+(d.total||0)+' devices ko mila'+((d.failed||0)?' ('+(d.failed||0)+' fail)':'')+' — in-app bhi bhej di gayi.');
+  }catch(e){ toast('In-app notification bhej di gayi. Real push nahi gaya: '+((e&&e.message)||'Cloud Function deploy nahi hua'), false); }
 }
-function renderNotifAdmin(){
+async function renderNotifAdmin(){
   const el=document.getElementById('ntList'); if(!el) return;
   loadNotifs();
   el.innerHTML = notifs.length? notifs.slice(0,10).map(n=>'<div class="glass rounded-2xl p-3 mb-2"><p class="font-semibold text-sm">'+esc(n.title)+'</p><p class="text-xs text-gray-600">'+esc(n.body)+'</p><p class="text-[11px] text-gray-400">'+new Date(n.date).toLocaleString('en-IN')+'</p></div>').join('') : '<p class="text-sm text-gray-500">Abhi koi notification nahi bheji gayi.</p>';
   const v=document.getElementById('sFcmVapid'); if(v) v.value=settings.fcmVapid||'';
+  // v19.3: kitne devices ne push enable kiya hai (un sab par real push jayega)
+  try{ if(typeof firestoreOn==='function' && firestoreOn()){ const s=await db.collection('pushTokens').get(); const el2=document.getElementById('pushSubCount'); if(el2) el2.textContent='Push subscribers: '+s.size+' device(s) — in sab par real push jayega.'; } }catch(e){}
 }
 
 /* ---- Coupons admin ---- */
@@ -1994,7 +2071,7 @@ function saveProfile(){
   u.exam=document.getElementById('pfExam').value;
   u.address=document.getElementById('pfAddress').value.trim();
   if(window._dpData){ u.dp=window._dpData; window._dpData=null; }
-  saveUsers(); saveSessionUser();
+  saveUsers(); saveSessionUser(); syncCustomerToFirestore(u);
   toast('Profile saved.');
   openProfile();
 }
@@ -2010,7 +2087,7 @@ function onDpFile(input){
       const ctx=cv.getContext('2d'); const side=Math.min(img.width, img.height);
       ctx.drawImage(img, (img.width-side)/2, (img.height-side)/2, side, side, 0, 0, s, s);
       window._dpData=cv.toDataURL('image/jpeg', 0.85);
-      const u=sessionUser; if(u){ u.dp=window._dpData; saveUsers(); }
+      const u=sessionUser; if(u){ u.dp=window._dpData; saveUsers(); syncCustomerToFirestore(u); }
       toast('Photo ready — Save Profile dabakar save karein.');
       openProfile();
     };
@@ -2064,7 +2141,7 @@ function buyBook(id){
     ? '<div class="bg-[#F5EFE6] border border-[rgba(212,175,55,.4)] rounded-2xl p-4 mt-3 text-sm leading-relaxed"><strong>Cashfree App ID saved, par payment link nahi hai.</strong><br>Cashfree ko server se session_id chahiye, isliye sirf App ID se checkout nahi khulta. Admin Tab 3 me Cashfree payment link add karein, ya Razorpay Key ID use karein.</div>'
     : '<div class="bg-[#F5EFE6] border border-[rgba(212,175,55,.4)] rounded-2xl p-4 mt-3 text-sm leading-relaxed"><strong>No payment link set yet.</strong><br>Please email the publisher to order this book, or pay via UPI if shared below.</div>')
   +(settings.upi?'<div class="mt-3 flex items-center gap-2"><input readonly value="'+esc(settings.upi)+'" class="inp !text-xs flex-1" onclick="this.select()"><button onclick="copyText(\''+esc(settings.upi)+'\')" class="outline-btn rounded-full px-3 py-2 text-xs font-semibold shrink-0"><i class="fa-regular fa-copy mr-1"></i>Copy UPI</button></div>':'')
-  +'<button onclick="confirmOrder(\''+b.id+'\')" class="gold-btn w-full rounded-full py-3 text-sm font-semibold mt-4"><i class="fa-solid fa-circle-check mr-2"></i>I Have Paid — Confirm My Order</button>'
+  +(d.finalPrice<=0?'<button onclick="confirmOrder(\''+b.id+'\')" class="gold-btn w-full rounded-full py-3 text-sm font-semibold mt-4"><i class="fa-solid fa-circle-check mr-2"></i>I Have Paid — Confirm My Order</button>':'')
   +'<button onclick="closeModal(\'payModal\')" class="outline-btn w-full rounded-full py-2.5 text-sm font-semibold mt-2">Cancel</button>'
   +'<p class="text-[11px] text-gray-400 text-center mt-3">Payee: '+esc(settings.merchant||'Mr Singh Publications')+' • After payment, your eBook + password appear under My Orders / My Library.</p>';
   closeModal('detailsModal'); openModal('payModal');
@@ -2102,7 +2179,7 @@ function showAdminTab(tab){
   ['books','add','settings','customers','coupons','notify'].forEach(t=>{ const el=document.getElementById('tab-'+t); if(el) el.classList.toggle('hidden', t!==tab); });
   document.querySelectorAll('.admin-tab').forEach(b=>b.classList.toggle('active', b.dataset.atab===tab));
   if(tab==='settings') fillSettingsForm();
-  if(tab==='customers'){ renderCustomers(); renderRequests(); renderCustDetails(); }
+  if(tab==='customers'){ loadCustomersFromFirestore(); renderCustomers(); renderRequests(); renderCustDetails(); }
   if(tab==='coupons') renderCoupons();
   if(tab==='notify') renderNotifAdmin();
 }
@@ -2163,14 +2240,14 @@ function v8Init(){
     cp.innerHTML='<div class="glass rounded-3xl p-5 mb-5"><h2 class="font-serif font-bold text-lg">Coupons & Offers</h2><p class="text-[11px] text-gray-500 mt-1">Coupon code banayein — customer checkout me code dal kar discount payega. <strong>Min books</strong> ka matlab: coupon tabhi chalega jab customer ne pehle se utni books kharidi hon (is book ko milakar).</p><div class="grid sm:grid-cols-3 gap-3 mt-4"><div><label class="lbl">Coupon Code *</label><input id="cpCode" class="inp font-mono" placeholder="WELCOME10"></div><div><label class="lbl">Discount Type</label><select id="cpType" class="inp"><option value="percent">Percent (%)</option><option value="flat">Flat (₹)</option></select></div><div><label class="lbl">Discount Value *</label><input id="cpValue" type="number" min="1" class="inp" placeholder="10"></div><div><label class="lbl">Min Books Bought</label><input id="cpMinBooks" type="number" min="0" class="inp" placeholder="0 = koi shart nahi"></div><div><label class="lbl">Min Order Amount (₹)</label><input id="cpMinAmount" type="number" min="0" class="inp" placeholder="0"></div><div><label class="lbl">Expiry Date</label><input id="cpExpiry" type="date" class="inp"></div><div><label class="lbl">Max Uses (0 = unlimited)</label><input id="cpMaxUses" type="number" min="0" class="inp" placeholder="0"></div></div><button onclick="createCoupon()" class="gold-btn rounded-full px-5 py-2.5 text-sm font-semibold mt-4">Generate Coupon</button></div><div class="glass rounded-3xl p-5 mb-5"><h3 class="font-semibold text-sm">Bulk Discount (automatic — bina coupon ke)</h3><p class="text-[11px] text-gray-500 mt-1">Customer jitni books kharidega, utna discount automatic lagega. Khali chhoden to band rahega.</p><div class="grid sm:grid-cols-2 gap-3 mt-3"><div><label class="lbl">2nd book se discount (%)</label><input id="sBulk2" type="number" min="0" max="90" class="inp" placeholder="e.g. 5"></div><div><label class="lbl">3rd book se discount (%)</label><input id="sBulk3" type="number" min="0" max="90" class="inp" placeholder="e.g. 10"></div></div><button onclick="saveBulk()" class="outline-btn rounded-full px-4 py-2 text-xs font-semibold mt-3">Save Bulk Discount</button></div><div id="couponList"></div>';
     tabCustomers.parentElement.appendChild(cp);
     const nt=document.createElement('div'); nt.id='tab-notify'; nt.className='hidden';
-    nt.innerHTML='<div class="glass rounded-3xl p-5 mb-5"><h2 class="font-serif font-bold text-lg">Push Notifications</h2><p class="text-[11px] text-gray-500 mt-1 leading-relaxed">Yahan likh kar bheja gaya notification sabhi app/website users ko <strong>in-app</strong> dikhega (bell icon par). Locked phone par asli push ke liye Firebase Cloud Messaging (FCM) chahiye — uske liye neeche VAPID key dalen; broadcast (server key se bhejna) is single file se nahi hota, wo Firebase Console se ya backend se hota hai.</p><div class="mt-4 space-y-3"><div><label class="lbl">Notification Title *</label><input id="ntTitle" class="inp" placeholder="e.g. New Book Live!"></div><div><label class="lbl">Message</label><textarea id="ntBody" rows="3" class="inp" placeholder="e.g. BPSC History Guide ab ₹449 me available hai."></textarea></div><button onclick="sendNotificationAdmin()" class="gold-btn rounded-full px-5 py-2.5 text-sm font-semibold">Send to All Users</button></div></div><div class="glass rounded-3xl p-5 mb-5"><h3 class="font-semibold text-sm">FCM Setup (asli push ke liye)</h3><p class="text-[11px] text-gray-500 mt-1">Firebase Console → Project Settings → Cloud Messaging → Web Push certificates → VAPID key copy karke yahan dalen. Users ko bell icon → “Enable Push Notifications” dabana hoga.</p><div class="mt-3"><label class="lbl">VAPID Key (public)</label><input id="sFcmVapid" class="inp font-mono !text-xs" placeholder="B..."></div><button onclick="settings.fcmVapid=document.getElementById(\'sFcmVapid\').value.trim(); saveSettingsLS(); toast(\'VAPID key saved.\');" class="outline-btn rounded-full px-4 py-2 text-xs font-semibold mt-2">Save VAPID Key</button></div><div id="ntList"></div>';
+    nt.innerHTML='<div class="glass rounded-3xl p-5 mb-5"><h2 class="font-serif font-bold text-lg">Push Notifications</h2><p class="text-[11px] text-gray-500 mt-1 leading-relaxed">Yahan likh kar bheja gaya notification sabhi users ko <strong>in-app</strong> dikhega (bell icon par) aur jin devices ne push enable kiya hai unke <strong>phone par bhi push</strong> jayega (locked phone par bhi). Real push ke liye neeche VAPID key + Cloud Function `sendPushBroadcast` deploy hona chahiye (functions/DEPLOY_GUIDE.md) — pehli baar deploy karne tak sirf in-app jayega.</p><p id="pushSubCount" class="text-[11px] font-semibold text-[#9A7B1A] mt-2">Push subscribers: …</p><div class="mt-4 space-y-3"><div><label class="lbl">Notification Title *</label><input id="ntTitle" class="inp" placeholder="e.g. New Book Live!"></div><div><label class="lbl">Message</label><textarea id="ntBody" rows="3" class="inp" placeholder="e.g. BPSC History Guide ab ₹449 me available hai."></textarea></div><button onclick="sendNotificationAdmin()" class="gold-btn rounded-full px-5 py-2.5 text-sm font-semibold">Send to All Users</button></div></div><div class="glass rounded-3xl p-5 mb-5"><h3 class="font-semibold text-sm">FCM Setup (asli push ke liye)</h3><p class="text-[11px] text-gray-500 mt-1">Firebase Console → Project Settings → Cloud Messaging → Web Push certificates → VAPID key copy karke yahan dalen. Users ko bell icon → “Enable Push Notifications” dabana hoga.</p><div class="mt-3"><label class="lbl">VAPID Key (public)</label><input id="sFcmVapid" class="inp font-mono !text-xs" placeholder="B..."></div><button onclick="settings.fcmVapid=document.getElementById(\'sFcmVapid\').value.trim(); saveSettingsLS(); toast(\'VAPID key saved.\');" class="outline-btn rounded-full px-4 py-2 text-xs font-semibold mt-2">Save VAPID Key</button></div><div id="ntList"></div>';
     tabCustomers.parentElement.appendChild(nt);
   }
   /* Customer Details table inside Customers tab */
   if(tabCustomers && !document.getElementById('custDetailsBody')){
     const wrap=document.createElement('div');
     wrap.className='glass rounded-3xl overflow-hidden mt-5';
-    wrap.innerHTML='<div class="px-5 py-4 border-b border-[rgba(212,175,55,.25)] flex justify-between items-center flex-wrap gap-2"><h2 class="font-serif font-bold text-lg">Customer Details</h2><span id="custDetailsCount" class="text-xs font-bold bg-[#F5EFE6] border border-[rgba(212,175,55,.4)] rounded-full px-3 py-1">0</span></div><p class="text-[11px] text-gray-500 px-5 pt-3"><strong>Password kabhi nahi dikhaya jata</strong> — passwords hash hokar save hote hain, admin bhi unhe dekh nahi sakta. Ye table sirf is browser/device par register hue customers dikhata hai (Firestore sync ON ho to wahan ke customers bhi aate hain).</p><div class="overflow-x-auto"><table class="w-full text-sm min-w-[900px]"><thead><tr class="text-left text-xs text-gray-500 border-b bg-white/60"><th class="px-3 py-3">Photo</th><th class="px-3 py-3">Name</th><th class="px-3 py-3">Email</th><th class="px-3 py-3">Mobile</th><th class="px-3 py-3">Gender</th><th class="px-3 py-3">Exam</th><th class="px-3 py-3">Address</th><th class="px-3 py-3">Joined</th><th class="px-3 py-3 text-center">Books</th><th class="px-3 py-3 text-right">Spent</th></tr></thead><tbody id="custDetailsBody"></tbody></table></div>';
+    wrap.innerHTML='<div class="px-5 py-4 border-b border-[rgba(212,175,55,.25)] flex justify-between items-center flex-wrap gap-2"><h2 class="font-serif font-bold text-lg">Customer Details</h2><span id="custDetailsCount" class="text-xs font-bold bg-[#F5EFE6] border border-[rgba(212,175,55,.4)] rounded-full px-3 py-1">0</span></div><p class="text-[11px] text-gray-500 px-5 pt-3"><strong>Password kabhi nahi dikhaya jata</strong> — passwords hash hokar save hote hain, admin bhi unhe dekh nahi sakta. Ye table sabhi customers dikhata hai — kisi bhi device / browser se login karne wale customers yahan aate hain (Firestore `customers` collection se sync hota hai).</p><div class="overflow-x-auto"><table class="w-full text-sm min-w-[900px]"><thead><tr class="text-left text-xs text-gray-500 border-b bg-white/60"><th class="px-3 py-3">Photo</th><th class="px-3 py-3">Name</th><th class="px-3 py-3">Email</th><th class="px-3 py-3">Mobile</th><th class="px-3 py-3">Gender</th><th class="px-3 py-3">Exam</th><th class="px-3 py-3">Address</th><th class="px-3 py-3">Joined</th><th class="px-3 py-3 text-center">Books</th><th class="px-3 py-3 text-right">Spent</th></tr></thead><tbody id="custDetailsBody"></tbody></table></div>';
     tabCustomers.appendChild(wrap);
   }
   /* Library + Notifications modals */
@@ -2288,6 +2365,13 @@ function editBook(id){
 }
 function confirmOrder(bookId){
   const b=findBook(bookId); if(!b||!sessionUser) return;
+  // v19.3: bina payment ke order confirm hona BAND — "I Have Paid" button se koi bhi
+  // bina pay kiye eBook + password paa leta tha. Confirm sirf tab hoga jab (a) final
+  // price 0 ho (free order / 100% discount), ya (b) payment verified ho: Razorpay
+  // handler ne _rzPaymentId set kiya ho, Cashfree function ne free bataya ho
+  // (_cfFree), ya Cashfree return ne link_status=PAID verify kiya ho (_cfPaid).
+  const _d=calcDiscount(b);
+  if(!window._rzPaymentId && !window._cfFree && !window._cfPaid && _d.finalPrice>0){ toast('Payment verify nahi hua — pehle payment karein, phir eBook milega.', false); return; }
   const o=createOrder(b); applyFinalPriceToOrder(o,b);
   const link=o.ebookLink;
   document.getElementById('payBody').innerHTML =
@@ -2665,9 +2749,11 @@ if(typeof handleFirebaseUser==='function'){
      hai, aur {link_url, order_id, amount} deta hai — frontend redirect karta hai.
    - Return handler: Cashfree payment ke baad user ko /?cf_return=1&order_id=...
      &link_status=PAID par wapas bhejta hai. link_status PAID ho to order confirm
-     hota hai (eBook Library me). PAID na ho to "I Have Paid" manual confirm
-     abhi bhi chalta hai. (Bank-grade webhook verification is version me nahi hai
-     — return URL par bharosa hai, jo pehle wale "I Have Paid" flow jitna trusted hai.)
+     hota hai (eBook Library me). PAID na ho to order confirm NAHI hota — v19.3 me
+     "I Have Paid" manual confirm hata diya gaya hai (bina payment ke eBook mil
+     jata tha), aur confirmOrder() me guard hai: sirf verified payment ya ₹0 price
+     par hi confirm hota hai. (Bank-grade webhook verification is version me nahi hai
+     — return URL par bharosa hai.)
    - Coupons: Admin Tab 5 me save hote hi coupons Firestore `coupons` collection
      me sync hote hain (server wahi se validate karta hai). Bina sync ke coupon
      "not found" aayega.
@@ -2741,7 +2827,7 @@ async function payWithCashfreeFunction(bookId){
     const call=fns.httpsCallable('createCashfreeLink');
     const res=await call({ bookId:b.id, couponCode:(window._appliedCoupon?window._appliedCoupon.code:'') });
     const d=res && res.data ? res.data : {};
-    if(d.free){ closeModal('payModal'); confirmOrder(b.id); return; }
+    if(d.free){ window._cfFree=true; closeModal('payModal'); confirmOrder(b.id); return; }
     if(!d.link_url) throw new Error('Payment link nahi bana.');
     try{ sessionStorage.setItem('msp_pending_cf_order', JSON.stringify({order_id:d.order_id, bookId:b.id, amount:d.amount})); }catch(e){}
     window.location.href=d.link_url;
@@ -2761,12 +2847,13 @@ async function payWithCashfreeFunction(bookId){
     const status=(q.get('link_status')||'').toUpperCase();
     window.history.replaceState({}, '', window.location.pathname + window.location.hash);
     if(!orderId){ toast('Payment return mila, par order nahi mila — My Orders check karein.'); return; }
-    if(status && status!=='PAID'){ toast('Payment poora nahi hua ('+status+') — dobara try karein, ya "I Have Paid" se confirm karein.', false); return; }
-    if(status!=='PAID'){ toast('Payment status verify nahi hua — agar aapne pay kiya hai to "I Have Paid" se confirm karein.'); return; }
+    if(status && status!=='PAID'){ toast('Payment poora nahi hua ('+status+') — dobara try karein. Agar paise kat gaye hain to publisher se sampark karein (mrsinghpublications@gmail.com).', false); return; }
+    if(status!=='PAID'){ toast('Payment status verify nahi hua — agar aapne pay kiya hai to kuch der baad My Orders check karein ya publisher se sampark karein.'); return; }
     if(!sessionUser){ toast('Payment ho gaya hai — please login karein, phir eBook Library me milega.'); return; }
     const finish=function(pending){
       const bookId=pending && pending.bookId ? pending.bookId : (function(){ try{ const p=JSON.parse(sessionStorage.getItem('msp_pending_cf_order')||'null'); return p&&p.bookId?p.bookId:null; }catch(e){ return null; } })();
       if(!bookId){ toast('Payment ho gaya hai — My Orders me check karein.'); return; }
+      window._cfPaid=true; // Cashfree return ne link_status=PAID verify kiya
       confirmOrder(bookId);
       try{
         const mine=myOrders().filter(function(o){ return o.bookId===bookId; }).sort(function(a,b){ return new Date(b.date)-new Date(a.date); })[0];

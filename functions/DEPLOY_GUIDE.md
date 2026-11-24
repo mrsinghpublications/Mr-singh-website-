@@ -70,11 +70,11 @@ firebase deploy --only functions
 - Payment ke baad Cashfree customer ko wapas store par bhejta hai
   (`/?cf_return=1&order_id=...&link_status=PAID`).
 - `link_status=PAID` ho to store order ko automatic confirm karke eBook
-  Library me dikha deta hai. Agar status PAID nahi hai to "I Have Paid"
-  button se manual confirm abhi bhi chalta hai (pehle jaisa).
+  Library me dikha deta hai. Agar status PAID nahi hai to order confirm
+  NAHI hota — v19.3 me "I Have Paid" manual confirm hata diya gaya hai
+  (bina payment ke eBook mil jata tha).
 - Asli bank-grade verification (Cashfree webhook + server-side verify)
-  is version me nahi hai — return URL par bharosa kiya jata hai, jo store
-  ke pehle wale "I Have Paid" flow jitna hi trusted hai. Webhook
+  is version me nahi hai — return URL par bharosa kiya jata hai. Webhook
   verification agla step hai, jab chahein tab add kar denge.
 
 ## Agar kuch gadbad ho
@@ -91,3 +91,43 @@ firebase deploy --only functions
 - `functions/index.js` — function ka code (secret isme nahi hai).
 - `functions/package.json` — dependencies (firebase-admin, firebase-functions).
 - `firebase.json` / `.firebaserc` — deploy config (repo root me).
+
+## Push Notifications — sendPushBroadcast (v19.3)
+
+`functions/index.js` me dusra function hai: **sendPushBroadcast**. Admin →
+Notifications tab se title + body bhejta hai; ye function Firestore
+`pushTokens` collection ke sabhi FCM tokens par real push bhejta hai (locked
+phone par bhi). Sirf publisher (admin email) bhej sakta hai.
+
+**Kaam karne ke liye kya chahiye:**
+1. **VAPID key** — Firebase Console → Project Settings → Cloud Messaging →
+   Web Push certificates → key copy karke Admin Tab 3 (ya Notifications tab)
+   me dalen aur Save karein.
+2. **Function deploy** — Cashfree wale function ki tarah:
+   ```bash
+   firebase deploy --only functions:sendPushBroadcast
+   ```
+   (Dono functions ek saath: `firebase deploy --only functions`.)
+3. **Users ne push enable kiya ho** — customer bell icon → "Enable Push
+   Notifications" dabaye (install kiye hue app me bhi wahi button hai). Uske
+   baad uska token Firestore `pushTokens` me save hota hai; Admin tab me
+   "Push subscribers: N device(s)" dikhega.
+
+**Blaze zaroori hai ya nahi?** FCM Google service hai, isliye ye function
+**Spark (free) plan par bhi chalna chahiye** — Cashfree wali Blaze zaroorat
+is par lagu nahi hoti. Deploy karke test karein; agar function
+"outbound networking blocked" jaisi error de to Blaze check karein.
+
+**Anonymous sign-in (customers ke liye):** Email/password se login karne
+wale customers Firebase Auth me signed-in nahi hote, isliye unka customer
+record aur push token Firestore me tabhi likha jata hai jab Firebase Console
+→ Authentication → Sign-in method → **Anonymous** ON ho. Google / Phone
+login wale customers ko iski zaroorat nahi hai.
+
+**Test kaise karein:**
+1. Apne phone par store kholein → bell icon → "Enable Push Notifications" →
+   Allow karein.
+2. Admin (Google login) → Notifications tab → "Push subscribers: 1 device(s)"
+   dikhna chahiye.
+3. Title + body likh kar Send dabayein → phone par push aana chahiye (app
+   band ho tab bhi).
