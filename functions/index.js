@@ -47,6 +47,16 @@ function cfBase(env) {
   return env === "sandbox" ? "https://sandbox.cashfree.com" : "https://api.cashfree.com";
 }
 
+// v19.5.2: har Firestore read par timeout — 24 Nov 15:49 IST ko ek read bina
+// jawab ke atak gaya tha (na error, na timeout line), isliye ab atakne par
+// saaf error milta hai aur client latka nahi rehta.
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("Timed out: " + label)), ms)),
+  ]);
+}
+
 exports.createCashfreeLink = onCall(
   {
     region: "asia-south1",
@@ -86,7 +96,9 @@ exports.createCashfreeLink = onCall(
     console.log("createCashfreeLink: book ok price=" + base);
 
     // 2. Bulk discount — user ke CONFIRMED orders gine jate hain.
-    const ordersSnap = await db.collection("orders").where("userId", "==", uid).get();
+    console.log("createCashfreeLink: reading orders for uid");
+    const ordersSnap = await withTimeout(db.collection("orders").where("userId", "==", uid).get(), 10000, "orders query");
+    console.log("createCashfreeLink: orders read, count=" + ordersSnap.size);
     let owned = 0;
     ordersSnap.forEach((d) => {
       const s = String((d.data() && d.data().status) || "");
@@ -95,11 +107,11 @@ exports.createCashfreeLink = onCall(
     let bulk2Pct = 0;
     let bulk3Pct = 0;
     try {
-      const cfgSnap = await db.collection("config").doc("settings").get();
+      const cfgSnap = await withTimeout(db.collection("config").doc("settings").get(), 10000, "config read");
       const cfg = cfgSnap.exists ? cfgSnap.data() : {};
       bulk2Pct = Number(cfg.bulk2Pct || 0);
       bulk3Pct = Number(cfg.bulk3Pct || 0);
-    } catch (e) { /* bulk settings optional hain */ }
+    } catch (e) { console.log("createCashfreeLink: config read failed: " + (e && e.message ? e.message : e)); }
     let bulkPct = 0;
     if (owned + 1 >= 3 && bulk3Pct > 0) bulkPct = bulk3Pct;
     else if (owned + 1 >= 2 && bulk2Pct > 0) bulkPct = bulk2Pct;
@@ -110,7 +122,9 @@ exports.createCashfreeLink = onCall(
     let couponAmt = 0;
     let coupon = null;
     if (couponCode) {
-      const cSnap = await db.collection("coupons").doc(couponCode).get();
+      console.log("createCashfreeLink: reading coupon " + couponCode);
+      const cSnap = await withTimeout(db.collection("coupons").doc(couponCode).get(), 10000, "coupon read");
+      console.log("createCashfreeLink: coupon read exists=" + cSnap.exists);
       if (!cSnap.exists) {
         throw new HttpsError("not-found", "Coupon code not found.");
       }
