@@ -11,11 +11,11 @@
 | `logo.png` | Transparent gold logo (header, auth, admin, footer) |
 | `icon.jpg` | App icon / favicon (512×512) |
 | `manifest.json` | PWA manifest (name, icons, start URL = the website) |
-| `sw.js` | Service worker — offline shell for the PWA (v19 cache `msp-v19`) |
+| `sw.js` | Service worker — offline shell for the PWA (v19.5 cache `msp-v19-5`) |
 | `README.md` | This file |
-| `SPEC.md` | Cumulative spec — every rule from v1–v19 |
+| `SPEC.md` | Cumulative spec — every rule from v1–v19.5 |
 
-Upload **all seven** files together to the same folder. `index.html` alone works, but install-as-app needs `manifest.json` + `sw.js` beside it. **After uploading v19, hard-refresh once (Ctrl+Shift+R)** — the service worker cache name changed, so the new version loads instead of the cached v18.
+Upload **all seven** files together to the same folder. `index.html` alone works, but install-as-app needs `manifest.json` + `sw.js` beside it. **After uploading v19.5, hard-refresh once (Ctrl+Shift+R)** — the service worker cache name changed, so the new version loads instead of the cached v19.4.
 
 ## 1. Host the website (isroot.in)
 1. In your isroot.in / hosting panel, point the domain `mrsinghpublications.isroot.in` to your hosting folder (or GitHub Pages, then add the domain as a custom domain there).
@@ -138,3 +138,8 @@ Firebase Hosting cannot block by User-Agent in `firebase.json` alone — use a C
 - **UPI se pay karne wale customers ke liye rasta wapas:** checkout me UPI ID ke neeche ab "I Paid via UPI — Notify Admin" button hai. Customer UPI se pay karke ye dabata hai — order "pending" banta hai, par eBook tab tak **nahi** milta jab tak aap confirm na karein.
 - **Admin confirm:** Admin → Customers tab → Orders me pending order ke saath **"Confirm Payment — eBook De Do"** button hai. Apne UPI app / bank me payment dekhne ke baad dabayein — tabhi customer ko eBook + password milega (My Orders / Library me). Bina confirm kiye customer read/download/email kuch nahi kar sakta.
 - **Hisab saaf:** pending (verify na hua) order customer ke Books count ya Spent me nahi gina jata — sirf confirm hone ke baad gina jata hai.
+
+## 12. v19.5 — Coupon Generate + Delete; Dynamic Cashfree payment (24 Nov 2026)
+- **Coupon code Generate:** Admin → Tab 5 me Code field ke saath **Generate** button — ek click me random coupon code (jaise MRSINGH7K2P) ban jata hai; discount bharke **Create Coupon** dabayein.
+- **Coupon Delete:** list me Delete dabane par pehle "Confirm Delete?" poochta hai, phir coupon browser se aur server (Firestore) se dono jagah delete hota hai — deleted coupon dobara kaam nahi karega. (Pehle delete sirf browser se hota tha, server par coupon zinda rehta tha.)
+- **Dynamic Cashfree payment:** Admin → Tab 3 me **Cashfree Dynamic Links** checkbox ON karne par customer ke checkout me "Pay with Cashfree" button aata hai — coupon discount ke saath server se fresh payment link banta hai, amount server verify karta hai. Function deploy ho gaya hai (24 Nov 2026, dono functions live: createCashfreeLink + sendPushBroadcast).
