@@ -65,6 +65,10 @@ exports.createCashfreeLink = onCall(
     if (!bookId) {
       throw new HttpsError("invalid-argument", "bookId is required.");
     }
+    // v19.5.1: step logging — 24 Nov ko call verification ke baad handler
+    // chup ho gaya tha (na error, na Cashfree call, na timeout line), isliye
+    // har step log hota hai taaki atakne ki jagah dikhe.
+    console.log("createCashfreeLink: auth ok uid=" + uid + " bookId=" + bookId + " coupon=" + couponCode);
 
     // 1. Book — price + live status Firestore se (server source of truth).
     const bookSnap = await db.collection("books").doc(bookId).get();
@@ -79,6 +83,7 @@ exports.createCashfreeLink = onCall(
     if (!(base >= 0)) {
       throw new HttpsError("invalid-argument", "Invalid book price.");
     }
+    console.log("createCashfreeLink: book ok price=" + base);
 
     // 2. Bulk discount — user ke CONFIRMED orders gine jate hain.
     const ordersSnap = await db.collection("orders").where("userId", "==", uid).get();
@@ -132,6 +137,7 @@ exports.createCashfreeLink = onCall(
     }
 
     const amount = Math.max(0, base - bulkAmt - couponAmt);
+    console.log("createCashfreeLink: amount=" + amount + " base=" + base + " bulk=" + bulkAmt + " coupon=" + couponAmt);
     if (amount === 0) {
       return {free: true, amount: 0, order_id: null, link_url: null};
     }
@@ -163,30 +169,42 @@ exports.createCashfreeLink = onCall(
       Math.random().toString(36).slice(2, 6).toUpperCase();
     const returnUrl = STORE_URL + "/?cf_return=1&order_id=" + encodeURIComponent(orderId);
     const expiry = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-    const resp = await fetch(cfBase(env) + "/pg/links", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-client-id": clientId,
-        "x-client-secret": clientSecret,
-        "x-api-version": "2023-08-01",
-      },
-      body: JSON.stringify({
-        link_id: orderId,
-        link_amount: amount,
-        link_currency: "INR",
-        link_purpose: String(book.title || "eBook").slice(0, 100),
-        customer_details: {
-          customer_id: uid,
-          customer_name: customerName,
-          customer_email: customerEmail,
-          customer_phone: customerPhone,
+    // v19.5.1: Cashfree fetch par 20s timeout — bina timeout ke ek atakna
+    // (24 Nov) frontend ko hamesha ke liye latka deta tha; ab timeout par
+    // saaf error milta hai aur user dobara try kar sakta hai.
+    console.log("createCashfreeLink: calling Cashfree " + cfBase(env) + "/pg/links amount=" + amount);
+    let resp;
+    try {
+      resp = await fetch(cfBase(env) + "/pg/links", {
+        method: "POST",
+        signal: AbortSignal.timeout(20000),
+        headers: {
+          "Content-Type": "application/json",
+          "x-client-id": clientId,
+          "x-client-secret": clientSecret,
+          "x-api-version": "2023-08-01",
         },
-        link_notify: {send_sms: Boolean(customerPhone), send_email: Boolean(customerEmail)},
-        link_meta: {return_url: returnUrl, notify_url: ""},
-        link_expiry_time: expiry,
-      }),
-    });
+        body: JSON.stringify({
+          link_id: orderId,
+          link_amount: amount,
+          link_currency: "INR",
+          link_purpose: String(book.title || "eBook").slice(0, 100),
+          customer_details: {
+            customer_id: uid,
+            customer_name: customerName,
+            customer_email: customerEmail,
+            customer_phone: customerPhone,
+          },
+          link_notify: {send_sms: Boolean(customerPhone), send_email: Boolean(customerEmail)},
+          link_meta: {return_url: returnUrl, notify_url: ""},
+          link_expiry_time: expiry,
+        }),
+      });
+    } catch (e) {
+      console.error("createCashfreeLink: Cashfree fetch failed: " + (e && e.message ? e.message : e));
+      throw new HttpsError("internal", "Cashfree se jawab nahi aaya — dobara try karein. (" + (e && e.name ? e.name : "fetch error") + ")");
+    }
+    console.log("createCashfreeLink: Cashfree status=" + resp.status);
     const resJson = await resp.json().catch(() => ({}));
     if (!resp.ok || !resJson.link_url) {
       const msg = (resJson && (resJson.message || resJson.error)) || ("Cashfree error " + resp.status);
@@ -209,6 +227,7 @@ exports.createCashfreeLink = onCall(
       link_url: resJson.link_url,
       date: new Date().toISOString(),
     });
+    console.log("createCashfreeLink: order written " + orderId + " link ok");
 
     // 8. Coupon use gin lein (link banne ke baad hi).
     if (coupon) {
