@@ -161,7 +161,27 @@ exports.createCashfreeLink = onCall(
     const customer = (data.customer && typeof data.customer === "object") ? data.customer : {};
     const customerName = String(customer.name || auth.name || "Customer").slice(0, 100);
     const customerEmail = String(customer.email || auth.email || "").slice(0, 100);
-    const customerPhone = String(customer.phone || auth.phone_number || "").replace(/\D/g, "").slice(-10);
+    let customerPhone = String(customer.phone || auth.phone_number || "").replace(/\D/g, "").slice(-10);
+    // v19.5.5: purane client phone nahi bhejte — profile (customers doc,
+    // doc id = lowercase email) se phone lein, taaki purana app bhi chale.
+    if (!customerPhone) {
+      try {
+        const emailKey = String(customerEmail || auth.email || "").toLowerCase().trim();
+        if (emailKey) {
+          const custSnap = await withTimeout(db.collection("customers").doc(emailKey).get(), 10000, "customers read");
+          if (custSnap.exists) {
+            const cd = custSnap.data() || {};
+            customerPhone = String(cd.mobile || cd.phone || "").replace(/\D/g, "").slice(-10);
+          }
+        }
+      } catch (e) { /* phone fallback optional hai — validation neeche handle karega */ }
+    }
+    // v19.5.5: Cashfree ko customer_phone chahiye — bina iske link nahi banta.
+    // Pehle saaf error dein (Cashfree API error se pehle), taaki user ko
+    // pata chale ki profile me mobile number add karna hai.
+    if (!customerPhone || customerPhone.length < 10) {
+      throw new HttpsError("failed-precondition", "Mobile number missing — please add your 10-digit mobile number in your profile before paying.");
+    }
 
     // 5. Cashfree credentials — Secret Key sirf server par.
     const env = (CASHFREE_ENV.value() || "live").toLowerCase() === "sandbox" ? "sandbox" : "live";
