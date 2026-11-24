@@ -2211,7 +2211,7 @@ function buyBook(id){
   +((d.bulkAmt>0||d.couponAmt>0)?'<div class="bg-[#F5EFE6] rounded-2xl p-3 mt-2 text-xs leading-relaxed">'+(d.bulkAmt>0?'<p>Bulk discount ('+d.bulkPct+'% for '+(myBookCount()+1)+' books): <strong class="text-green-700">− '+fmtINR(d.bulkAmt)+'</strong></p>':'')+(d.couponAmt>0?'<p>Coupon '+esc(d.coupon.code)+': <strong class="text-green-700">− '+fmtINR(d.couponAmt)+'</strong></p>':'')+'<p class="font-bold mt-1">You pay: '+fmtINR(d.finalPrice)+'</p></div>':'')
   +'<div class="flex gap-2 mt-3"><input id="couponInput" class="inp flex-1 !text-xs" placeholder="Coupon code (e.g. WELCOME10)" value="'+(window._appliedCoupon?esc(window._appliedCoupon.code):'')+'"><button onclick="applyCoupon(document.getElementById(\'couponInput\').value, \''+b.id+'\')" class="gold-btn rounded-full px-4 py-2 text-xs font-semibold shrink-0">Apply</button>'+(window._appliedCoupon?'<button onclick="window._appliedCoupon=null; buyBook(\''+b.id+'\')" class="outline-btn rounded-full px-3 py-2 text-xs font-semibold">Remove</button>':'')+'</div>'
   +((gateway==='cashfree' && settings.cfFunctionOn)
-    ? '<button onclick="payWithCashfreeFunction(\''+b.id+'\')" class="gold-btn w-full rounded-full py-3 text-sm font-semibold mt-3"><i class="fa-solid fa-lock mr-2"></i>Pay with Cashfree — '+fmtINR(d.finalPrice)+'</button><p class="text-[11px] text-gray-500 text-center mt-2">Dynamic secure link — discount applied, amount server se verify hoga. Aap Cashfree ke secure page par jayenge.</p>'
+    ? '<button onclick="payWithCashfreeFunction(\''+b.id+'\')" class="gold-btn w-full rounded-full py-3 text-sm font-semibold mt-3"><i class="fa-solid fa-lock mr-2"></i>Pay with Cashfree — '+fmtINR(d.finalPrice)+'</button><p class="text-[11px] text-gray-500 text-center mt-2">Dynamic secure link — discount applied, amount server se verify hoga. Aap Cashfree ke secure page par jayenge.</p><p id="cfDebugLine" class="text-[11px] text-gray-400 text-center mt-1"></p>'
     : link
     ? '<a href="'+esc(link)+'" target="_blank" rel="noopener" onclick="window._paidBook=\''+b.id+'\'" class="gold-btn block text-center rounded-full py-3 text-sm font-semibold mt-3"><i class="fa-solid fa-lock mr-2"></i>Pay Securely — '+fmtINR(d.finalPrice)+'</a><p class="text-[11px] text-gray-500 text-center mt-2">You will be taken to the secure '+gwName+' payment page in a new tab.</p>'
     : canRz
@@ -2905,9 +2905,16 @@ async function payWithCashfreeFunction(bookId){
   const fns=cfFunctions();
   if(!fns || typeof fns.httpsCallable!=='function'){ toast('Cloud Functions load nahi hua — internet check karein, ya Admin Tab 3 me function band karke payment link use karein.', false); return; }
   toast('Secure payment link ban raha hai…');
+  const cfDebug=function(t){ try{ const el=document.getElementById('cfDebugLine'); if(el) el.textContent=t; }catch(e){} };
   try{
+    cfDebug('Function ko call bheji ja rahi hai…');
     const call=fns.httpsCallable('createCashfreeLink');
-    const res=await call({ bookId:b.id, couponCode:(window._appliedCoupon?window._appliedCoupon.code:'') });
+    // v19.5.2: client-side 25s timeout — server kabhi jawab na de to bhi
+    // button chupchaap latka nahi rehta; saaf error milta hai.
+    const cfTimeout=new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('Function se 25 second me koi jawab nahi aaya.')); }, 25000); });
+    cfDebug('Function ka jawab aa raha hai…');
+    const res=await Promise.race([call({ bookId:b.id, couponCode:(window._appliedCoupon?window._appliedCoupon.code:'') }), cfTimeout]);
+    cfDebug('Jawab mil gaya.');
     const d=res && res.data ? res.data : {};
     if(d.free){ window._cfFree=true; closeModal('payModal'); confirmOrder(b.id); return; }
     if(!d.link_url) throw new Error('Payment link nahi bana.');
@@ -2915,6 +2922,7 @@ async function payWithCashfreeFunction(bookId){
     window.location.href=d.link_url;
   }catch(e){
     const msg=(e && e.message) ? e.message : 'Payment link nahi ban paya.';
+    cfDebug('Error: '+msg);
     toast('Cashfree link error: '+msg, false);
     buyBook(bookId);
   }
