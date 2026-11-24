@@ -2215,7 +2215,7 @@ function buyBook(id){
   +'<div class="flex gap-2 mt-3"><input id="couponInput" class="inp flex-1 !text-xs" placeholder="Coupon code (e.g. WELCOME10)" value="'+(window._appliedCoupon?esc(window._appliedCoupon.code):'')+'"><button onclick="applyCoupon(document.getElementById(\'couponInput\').value, \''+b.id+'\')" class="gold-btn rounded-full px-4 py-2 text-xs font-semibold shrink-0">Apply</button>'+(window._appliedCoupon?'<button onclick="window._appliedCoupon=null; buyBook(\''+b.id+'\')" class="outline-btn rounded-full px-3 py-2 text-xs font-semibold">Remove</button>':'')+'</div>'
   +((gateway==='cashfree' && settings.cfFunctionOn && !userPhone)?'<div class="mt-3"><label class="lbl">Mobile Number (Cashfree payment ke liye zaroori hai)</label><input id="cfPhone" class="inp" inputmode="numeric" maxlength="10" placeholder="10-digit mobile number"></div>':'')
   +((gateway==='cashfree' && settings.cfFunctionOn)
-    ? '<button onclick="payWithCashfreeFunction(\''+b.id+'\')" class="gold-btn w-full rounded-full py-3 text-sm font-semibold mt-3"><i class="fa-solid fa-lock mr-2"></i>Pay with Cashfree — '+fmtINR(d.finalPrice)+'</button><p class="text-[11px] text-gray-500 text-center mt-2">Dynamic secure link — discount applied, amount server se verify hoga. Aap Cashfree ke secure page par jayenge.</p><p id="cfDebugLine" class="text-[11px] text-gray-400 text-center mt-1"></p>'
+    ? '<button onclick="payWithCashfreeFunction(\''+b.id+'\')" class="gold-btn w-full rounded-full py-3 text-sm font-semibold mt-3"><i class="fa-solid fa-lock mr-2"></i>Pay with Cashfree — '+fmtINR(d.finalPrice)+'</button><p class="text-[11px] text-gray-500 text-center mt-2">Dynamic secure checkout — discount applied, amount server se verify hoga. Aap Cashfree ke secure page par jayenge.</p><p id="cfDebugLine" class="text-[11px] text-gray-400 text-center mt-1"></p>'
     : link
     ? '<a href="'+esc(link)+'" target="_blank" rel="noopener" onclick="window._paidBook=\''+b.id+'\'" class="gold-btn block text-center rounded-full py-3 text-sm font-semibold mt-3"><i class="fa-solid fa-lock mr-2"></i>Pay Securely — '+fmtINR(d.finalPrice)+'</a><p class="text-[11px] text-gray-500 text-center mt-2">You will be taken to the secure '+gwName+' payment page in a new tab.</p>'
     : canRz
@@ -2925,7 +2925,7 @@ async function payWithCashfreeFunction(bookId){
   if(!cfPhone || cfPhone.length<10){ toast('Mobile number zaroori hai — 10-digit mobile number daalein (Cashfree payment ke liye chahiye).', false); if(cfPhoneEl) cfPhoneEl.focus(); return; }
   if(!profPhone){ try{ sessionUser.mobile=cfPhone; const rec=users.find(function(u){ return u.id===sessionUser.id; }); if(rec) rec.mobile=cfPhone; saveUsers(); if(typeof syncCustomerToFirestore==='function') syncCustomerToFirestore(sessionUser); }catch(e){} }
   const cfCustomer={ name:sessionUser.name||'', email:sessionUser.email||(sessionUser.type==='email'?sessionUser.identifier:''), phone:cfPhone };
-  toast('Secure payment link ban raha hai…');
+  toast('Secure payment page khul raha hai…');
   const cfDebug=function(t){ try{ const el=document.getElementById('cfDebugLine'); if(el) el.textContent=t; }catch(e){} };
   try{
     cfDebug('Function ko call bheji ja rahi hai…');
@@ -2938,15 +2938,39 @@ async function payWithCashfreeFunction(bookId){
     cfDebug('Jawab mil gaya.');
     const d=res && res.data ? res.data : {};
     if(d.free){ window._cfFree=true; closeModal('payModal'); confirmOrder(b.id); return; }
-    if(!d.link_url) throw new Error('Payment link nahi bana.');
+    if(!d.payment_session_id) throw new Error('Payment session nahi bana.');
     try{ sessionStorage.setItem('msp_pending_cf_order', JSON.stringify({order_id:d.order_id, bookId:b.id, amount:d.amount})); }catch(e){}
-    window.location.href=d.link_url;
+    cfDebug('Cashfree checkout khul raha hai…');
+    await openCashfreeCheckout(d.payment_session_id, d.order_id);
   }catch(e){
-    const msg=(e && e.message) ? e.message : 'Payment link nahi ban paya.';
+    const msg=(e && e.message) ? e.message : 'Payment nahi ban paya.';
     cfDebug('Error: '+msg);
-    toast('Cashfree link error: '+msg, false);
+    toast('Cashfree error: '+msg, false);
     buyBook(bookId);
   }
+}
+
+/* ---- v19.5.6: Cashfree hosted checkout (Orders API) — SDK load + checkout ---- */
+function loadCashfreeSdk(){
+  return new Promise(function(resolve, reject){
+    if(typeof window.Cashfree==='function'){ resolve(); return; }
+    const s=document.createElement('script');
+    s.src='https://sdk.cashfree.com/js/v3/cashfree.js';
+    s.async=true;
+    let done=false;
+    const to=setTimeout(function(){ if(!done){ done=true; reject(new Error('Cashfree SDK load nahi hua — internet check karein.')); } }, 20000);
+    s.onload=function(){ if(!done){ done=true; clearTimeout(to); resolve(); } };
+    s.onerror=function(){ if(!done){ done=true; clearTimeout(to); reject(new Error('Cashfree SDK load nahi hua — internet check karein.')); } };
+    document.head.appendChild(s);
+  });
+}
+async function openCashfreeCheckout(paymentSessionId, orderId){
+  await loadCashfreeSdk();
+  if(typeof window.Cashfree!=='function') throw new Error('Cashfree SDK load nahi hua.');
+  const cashfree=window.Cashfree({mode:'production'});
+  const returnUrl=window.location.origin+'/?cf_return=1&order_id='+encodeURIComponent(orderId);
+  const result=await cashfree.checkout({paymentSessionId:paymentSessionId, returnUrl:returnUrl, redirectTarget:'_self'});
+  if(result && result.error) throw new Error(result.error.message||'Cashfree checkout nahi khula.');
 }
 
 /* ---- Cashfree return handler: payment ke baad Cashfree yahan wapas bhejta hai ---- */
@@ -2955,27 +2979,58 @@ async function payWithCashfreeFunction(bookId){
     const q=new URLSearchParams(window.location.search);
     if(q.get('cf_return')!=='1') return;
     const orderId=q.get('order_id')||q.get('link_id')||'';
-    const status=(q.get('link_status')||'').toUpperCase();
     window.history.replaceState({}, '', window.location.pathname + window.location.hash);
     if(!orderId){ toast('Payment return mila, par order nahi mila — My Orders check karein.'); return; }
-    if(status && status!=='PAID'){ toast('Payment poora nahi hua ('+status+') — dobara try karein. Agar paise kat gaye hain to publisher se sampark karein (mrsinghpublications@gmail.com).', false); return; }
-    if(status!=='PAID'){ toast('Payment status verify nahi hua — agar aapne pay kiya hai to kuch der baad My Orders check karein ya publisher se sampark karein.'); return; }
     if(!sessionUser){ toast('Payment ho gaya hai — please login karein, phir eBook Library me milega.'); return; }
     const finish=function(pending){
       const bookId=pending && pending.bookId ? pending.bookId : (function(){ try{ const p=JSON.parse(sessionStorage.getItem('msp_pending_cf_order')||'null'); return p&&p.bookId?p.bookId:null; }catch(e){ return null; } })();
       if(!bookId){ toast('Payment ho gaya hai — My Orders me check karein.'); return; }
-      window._cfPaid=true; // Cashfree return ne link_status=PAID verify kiya
+      window._cfPaid=true; // Cashfree return ne order_status=PAID verify kiya
       confirmOrder(bookId);
       try{
         const mine=myOrders().filter(function(o){ return o.bookId===bookId; }).sort(function(a,b){ return new Date(b.date)-new Date(a.date); })[0];
-        if(mine){ if(pending&&pending.amount!=null) mine.price=pending.amount; mine.method='cashfree-link'; mine.paymentId=orderId; mine.status='Payment confirmed — eBook delivered'; saveOrders(); if(typeof syncOrderToFirestore==='function') syncOrderToFirestore(mine); }
+        if(mine){ if(pending&&pending.amount!=null) mine.price=pending.amount; mine.method='cashfree'; mine.paymentId=orderId; mine.status='Payment confirmed — eBook delivered'; saveOrders(); if(typeof syncOrderToFirestore==='function') syncOrderToFirestore(mine); }
         if(typeof db!=='undefined' && db){ db.collection('orders').doc(orderId).update({status:'Payment confirmed — eBook delivered', paymentId:orderId}).catch(function(){}); }
       }catch(e){}
       toast('Payment successful — eBook aapki Library me hai!');
     };
-    if(typeof db!=='undefined' && db){
-      db.collection('orders').doc(orderId).get().then(function(doc){ finish(doc.exists?doc.data():null); }).catch(function(){ finish(null); });
-    } else finish(null);
+    // v19.5.6: Orders API flow me return URL par status nahi hota — server
+    // se verify karte hain (verifyCashfreeOrder). Pehle auth restore hone
+    // ka intezaar karein (Google session), phir verify karein.
+    const verifyAndFinish=function(){
+      try{
+        const fns=cfFunctions();
+        if(!fns || typeof fns.httpsCallable!=='function'){ toast('Payment status verify nahi hua — agar aapne pay kiya hai to kuch der baad My Orders check karein ya publisher se sampark karein.'); return; }
+        fns.httpsCallable('verifyCashfreeOrder')({order_id:orderId}).then(function(res){
+          const st=res && res.data ? String(res.data.order_status||'').toUpperCase() : '';
+          if(st==='PAID'){
+            if(typeof db!=='undefined' && db){
+              db.collection('orders').doc(orderId).get().then(function(doc){ finish(doc.exists?doc.data():null); }).catch(function(){ finish(null); });
+            } else finish(null);
+          } else if(st){
+            toast('Payment poora nahi hua ('+st+') — dobara try karein. Agar paise kat gaye hain to publisher se sampark karein (mrsinghpublications@gmail.com).', false);
+          } else {
+            toast('Payment status verify nahi hua — agar aapne pay kiya hai to kuch der baad My Orders check karein ya publisher se sampark karein.');
+          }
+        }).catch(function(e){
+          const m=(e && e.message)||'';
+          toast('Payment status verify nahi hua ('+m+') — agar aapne pay kiya hai to kuch der baad My Orders check karein ya publisher se sampark karein.');
+        });
+      }catch(e){ toast('Payment status verify nahi hua — agar aapne pay kiya hai to kuch der baad My Orders check karein ya publisher se sampark karein.'); }
+    };
+    const waitAuth=function(){
+      try{
+        if(typeof firebaseAuth!=='undefined' && firebaseAuth){
+          if(firebaseAuth.currentUser){ verifyAndFinish(); return; }
+          let done=false;
+          const un=firebaseAuth.onAuthStateChanged(function(u){ if(done) return; done=true; try{un();}catch(e){} verifyAndFinish(); });
+          setTimeout(function(){ if(done) return; done=true; try{un();}catch(e){} verifyAndFinish(); }, 6000);
+          return;
+        }
+      }catch(e){}
+      verifyAndFinish();
+    };
+    waitAuth();
   }catch(e){}
 })();
 </script>

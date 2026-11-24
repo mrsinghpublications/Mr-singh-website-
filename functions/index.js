@@ -1,5 +1,5 @@
 /**
- * Mr Singh Publications — Cashfree Dynamic Payment Links (Firebase Cloud Function)
+ * Mr Singh Publications — Cashfree Dynamic Checkout (Firebase Cloud Function)
  * =================================================================================
  * Function: createCashfreeLink (callable, region asia-south1)
  *
@@ -10,12 +10,22 @@
  *      (2nd book X%, 3rd book Y% — Admin Tab 5 ke bulk settings se).
  *   3. Coupon code Firestore `coupons` collection se validate karta hai
  *      (active / expiry / maxUses / minAmount / minBooks).
- *   4. Final amount par Cashfree Payment Links API se ek FRESH dynamic link
- *      banata hai (har order ke liye alag link_id).
+ *   4. Final amount par Cashfree Payment Gateway Orders API se ek FRESH
+ *      order banata hai (har checkout ke liye alag order_id) aur
+ *      payment_session_id wapas bhejta hai — frontend Cashfree JS SDK se
+ *      hosted checkout kholta hai.
  *   5. Firestore `orders` me ek pending order likhta hai, taaki payment ke
  *      baad return par store use confirm kar sake.
- *   6. { link_url, order_id, amount } wapas bhejta hai — frontend user ko
- *      Cashfree ke secure page par redirect kar deta hai.
+ *   6. { payment_session_id, order_id, amount } wapas bhejta hai — frontend
+ *      Cashfree ke secure checkout page par le jata hai.
+ *
+ * v19.5.6 NOTE: pehle /pg/links API use hoti thi, par 25 Nov 00:31 IST ko
+ * Cashfree ne bataya ki link_creation_api account par enabled nahi hai
+ * ("link_creation_api is not enabled or approved") — dashboard me koi
+ * enable option nahi hai, aur VCIP/KYC bhi incomplete dikhta hai. Isliye
+ * standard Orders API use karte hain. Domain mrsinghpublications.isroot.in
+ * Cashfree dashboard me whitelisted + Approved hai, isliye SDK checkout
+ * khulega. verifyCashfreeOrder function return par payment verify karti hai.
  *
  * SECURITY: Cashfree Secret Key yahan code me NAHI hai. Wo Firebase Secret
  * Manager me hai (CASHFREE_CLIENT_SECRET) aur sirf server par milti hai.
@@ -198,18 +208,22 @@ exports.createCashfreeLink = onCall(
       );
     }
 
-    // 6. Dynamic payment link banayein (har order ke liye alag link_id).
+    // 6. Cashfree order banayein (Payment Gateway Orders API).
+    // v19.5.6: /pg/links API account par enabled nahi hai (25 Nov 00:31 IST:
+    // "link_creation_api is not enabled or approved") — isliye standard
+    // Orders API use karte hain; checkout Cashfree JS SDK se khulta hai.
+    // Domain mrsinghpublications.isroot.in Cashfree dashboard me whitelisted
+    // + Approved hai, isliye SDK checkout khulega.
     const orderId = "MSP-" + Date.now().toString(36).toUpperCase() + "-" +
       Math.random().toString(36).slice(2, 6).toUpperCase();
     const returnUrl = STORE_URL + "/?cf_return=1&order_id=" + encodeURIComponent(orderId);
-    const expiry = new Date(Date.now() + 30 * 60 * 1000).toISOString();
     // v19.5.1: Cashfree fetch par 20s timeout — bina timeout ke ek atakna
     // (24 Nov) frontend ko hamesha ke liye latka deta tha; ab timeout par
     // saaf error milta hai aur user dobara try kar sakta hai.
-    console.log("createCashfreeLink: calling Cashfree " + cfBase(env) + "/pg/links amount=" + amount);
+    console.log("createCashfreeLink: calling Cashfree " + cfBase(env) + "/pg/orders amount=" + amount);
     let resp;
     try {
-      resp = await fetch(cfBase(env) + "/pg/links", {
+      resp = await fetch(cfBase(env) + "/pg/orders", {
         method: "POST",
         signal: AbortSignal.timeout(20000),
         headers: {
@@ -219,19 +233,16 @@ exports.createCashfreeLink = onCall(
           "x-api-version": "2023-08-01",
         },
         body: JSON.stringify({
-          link_id: orderId,
-          link_amount: amount,
-          link_currency: "INR",
-          link_purpose: String(book.title || "eBook").slice(0, 100),
+          order_id: orderId,
+          order_amount: amount,
+          order_currency: "INR",
           customer_details: {
             customer_id: uid,
             customer_name: customerName,
             customer_email: customerEmail,
             customer_phone: customerPhone,
           },
-          link_notify: {send_sms: Boolean(customerPhone), send_email: Boolean(customerEmail)},
-          link_meta: {return_url: returnUrl, notify_url: ""},
-          link_expiry_time: expiry,
+          order_meta: {return_url: returnUrl, notify_url: ""},
         }),
       });
     } catch (e) {
@@ -240,9 +251,9 @@ exports.createCashfreeLink = onCall(
     }
     console.log("createCashfreeLink: Cashfree status=" + resp.status);
     const resJson = await resp.json().catch(() => ({}));
-    if (!resp.ok || !resJson.link_url) {
+    if (!resp.ok || !resJson.payment_session_id) {
       const msg = (resJson && (resJson.message || resJson.error)) || ("Cashfree error " + resp.status);
-      throw new HttpsError("internal", "Cashfree link nahi ban paya: " + String(msg).slice(0, 200));
+      throw new HttpsError("internal", "Cashfree order nahi ban paya: " + String(msg).slice(0, 200));
     }
 
     // 7. Pending order likhein (return par confirm karne ke liye).
@@ -256,14 +267,13 @@ exports.createCashfreeLink = onCall(
       discountAmt: bulkAmt + couponAmt,
       bulkPct: bulkPct,
       couponCode: coupon ? coupon.code : "",
-      method: "cashfree-link",
-      status: "Payment link created — awaiting payment",
-      link_url: resJson.link_url,
+      method: "cashfree",
+      status: "Cashfree order created — awaiting payment",
       date: new Date().toISOString(),
     });
-    console.log("createCashfreeLink: order written " + orderId + " link ok");
+    console.log("createCashfreeLink: order written " + orderId + " session ok");
 
-    // 8. Coupon use gin lein (link banne ke baad hi).
+    // 8. Coupon use gin lein (order banne ke baad hi).
     if (coupon) {
       try {
         await db.collection("coupons").doc(coupon.code)
@@ -271,7 +281,83 @@ exports.createCashfreeLink = onCall(
       } catch (e) { /* ignore */ }
     }
 
-    return {link_url: resJson.link_url, order_id: orderId, amount: amount};
+    return {payment_session_id: resJson.payment_session_id, order_id: orderId, amount: amount};
+  }
+);
+
+/**
+ * verifyCashfreeOrder (v19.5.6) — Cashfree return ke baad payment verify karein
+ * ============================================================================
+ * Frontend return URL par aane ke baad ye function Cashfree se order ka
+ * status mangta hai (GET /pg/orders/{order_id}) — secret sirf server par
+ * hai, isliye client khud verify nahi kar sakta. Sirf apne order ka status
+ * dekh sakta hai (userId check). PAID mile to Firestore order ko bhi
+ * confirmed mark kar deta hai, taaki My Orders me bhi dikhe.
+ */
+exports.verifyCashfreeOrder = onCall(
+  {
+    region: "asia-south1",
+    secrets: [CASHFREE_CLIENT_SECRET],
+    cors: true,
+  },
+  async (request) => {
+    const uid = request.auth && request.auth.uid ? request.auth.uid : null;
+    if (!uid) {
+      throw new HttpsError("unauthenticated", "Please login first.");
+    }
+    const orderId = String((request.data && request.data.order_id) || "").trim();
+    if (!orderId) {
+      throw new HttpsError("invalid-argument", "order_id missing.");
+    }
+    const orderSnap = await withTimeout(db.collection("orders").doc(orderId).get(), 10000, "order read");
+    if (!orderSnap.exists) {
+      throw new HttpsError("not-found", "Order not found.");
+    }
+    const orderData = orderSnap.data() || {};
+    if (orderData.userId && orderData.userId !== uid) {
+      throw new HttpsError("permission-denied", "This order belongs to another user.");
+    }
+    const env = (CASHFREE_ENV.value() || "live").toLowerCase() === "sandbox" ? "sandbox" : "live";
+    let clientId = "";
+    try {
+      const cfgSnap = await db.collection("config").doc("settings").get();
+      clientId = String((cfgSnap.exists ? cfgSnap.data().cfAppId : "") || "").trim();
+    } catch (e) { /* ignore */ }
+    const clientSecret = (CASHFREE_CLIENT_SECRET.value() || "").trim();
+    if (!clientId || !clientSecret) {
+      throw new HttpsError("failed-precondition", "Cashfree is not configured on the server yet (Client ID / Secret missing).");
+    }
+    let resp;
+    try {
+      resp = await fetch(cfBase(env) + "/pg/orders/" + encodeURIComponent(orderId), {
+        method: "GET",
+        signal: AbortSignal.timeout(20000),
+        headers: {
+          "x-client-id": clientId,
+          "x-client-secret": clientSecret,
+          "x-api-version": "2023-08-01",
+        },
+      });
+    } catch (e) {
+      console.error("verifyCashfreeOrder: Cashfree fetch failed: " + (e && e.message ? e.message : e));
+      throw new HttpsError("internal", "Cashfree se jawab nahi aaya — dobara try karein.");
+    }
+    const resJson = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const msg = (resJson && (resJson.message || resJson.error)) || ("Cashfree error " + resp.status);
+      throw new HttpsError("internal", "Cashfree se order status nahi mila: " + String(msg).slice(0, 200));
+    }
+    const status = String(resJson.order_status || "").toUpperCase();
+    console.log("verifyCashfreeOrder: order " + orderId + " status=" + status);
+    if (status === "PAID") {
+      try {
+        await db.collection("orders").doc(orderId).set({
+          status: "Payment confirmed — eBook delivered",
+          paymentId: resJson.cf_order_id || orderId,
+        }, {merge: true});
+      } catch (e) { /* ignore */ }
+    }
+    return {order_id: orderId, order_status: status, cf_order_id: resJson.cf_order_id || null, order_amount: resJson.order_amount || null};
   }
 );
 
