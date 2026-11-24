@@ -221,3 +221,85 @@ exports.createCashfreeLink = onCall(
     return {link_url: resJson.link_url, order_id: orderId, amount: amount};
   }
 );
+
+/**
+ * Push Broadcast (v19.3) — sendPushBroadcast (callable, region asia-south1)
+ * =========================================================================
+ * Admin (sirf publisher) title + body bhejta hai; ye function Firestore
+ * `pushTokens` collection ke sabhi FCM tokens par notification bhejta hai
+ * (admin.messaging().sendEachForMulticast). Invalid / unregistered tokens
+ * collection se hata diye jate hain.
+ *
+ * FRONTEND: Admin → Notifications tab → Send. In-app notification hamesha
+ * bhejti hai; ye function uske ALAWA phone par real push bhejta hai.
+ *
+ * BLAZE: FCM Google service hai, isliye ye function Spark (free) plan par bhi
+ * chalna chahiye (Cashfree jaisa non-Google call nahi hai). Deploy karke test
+ * karein; agar "outbound networking blocked" jaisi error aaye to Blaze check karein.
+ *
+ * Deploy: firebase deploy --only functions:sendPushBroadcast
+ * (poora functions folder deploy karne ke liye: firebase deploy --only functions)
+ */
+const ADMIN_EMAIL = defineString("ADMIN_EMAIL", {default: "mrsinghpublications@gmail.com"});
+
+exports.sendPushBroadcast = onCall(
+  {
+    region: "asia-south1",
+    cors: true,
+  },
+  async (request) => {
+    // 0. Sirf publisher (admin email) bhej sakta hai.
+    const email = request.auth && request.auth.token && request.auth.token.email;
+    if (!request.auth || !email || String(email).toLowerCase() !== ADMIN_EMAIL.value().toLowerCase()) {
+      throw new HttpsError("permission-denied", "Only the publisher can send push notifications.");
+    }
+    const title = String((request.data && request.data.title) || "").trim();
+    const body = String((request.data && request.data.body) || "").trim();
+    if (!title) throw new HttpsError("invalid-argument", "Title is required.");
+    if (title.length > 100 || body.length > 500) throw new HttpsError("invalid-argument", "Title/body too long.");
+
+    // 1. Sabhi push tokens lao.
+    const snap = await db.collection("pushTokens").get();
+    const tokens = [];
+    snap.forEach((d) => {
+      const t = (d.data() && d.data().token) || d.id;
+      if (t) tokens.push(String(t));
+    });
+    if (!tokens.length) return {sent: 0, failed: 0, total: 0};
+
+    // 2. 500-token chunks me bhejo (FCM multicast limit).
+    let sent = 0;
+    let failed = 0;
+    const dead = [];
+    for (let i = 0; i < tokens.length; i += 500) {
+      const chunk = tokens.slice(i, i + 500);
+      const res = await admin.messaging().sendEachForMulticast({
+        tokens: chunk,
+        notification: {title, body},
+        webpush: {
+          notification: {title, body, icon: `${STORE_URL}/icon.jpg`},
+          fcmOptions: {link: STORE_URL},
+        },
+      });
+      sent += res.successCount;
+      failed += res.failureCount;
+      res.responses.forEach((r, j) => {
+        if (!r.success) {
+          const code = (r.error && r.error.code) || "";
+          if (code === "messaging/registration-token-not-registered" || code === "messaging/invalid-registration-token") {
+            dead.push(chunk[j]);
+          }
+        }
+      });
+    }
+
+    // 3. Dead tokens hata do (dobara fail na hon).
+    if (dead.length) {
+      const batch = db.batch();
+      dead.forEach((t) => batch.delete(db.collection("pushTokens").doc(t)));
+      await batch.commit().catch(() => {});
+    }
+
+    return {sent, failed, total: tokens.length};
+  }
+);
