@@ -2865,15 +2865,23 @@ saveSettings = function(ev){
 };
 
 /* ---- Coupons sync to Firestore (server coupon validate karne ke liye) ---- */
+/* v19.5.3: sync pehle chupchaap fail ho jata tha (saare errors swallow) —
+   isliye coupon Firestore me kabhi pahuncha hi nahi aur function
+   "Coupon code not found" par atak jata tha. Ab: auth ensure hota hai,
+   aur failure par saaf error toast + console error milta hai. */
 async function syncCouponsToFirestore(){
-  if(!firestoreOn() || typeof db==='undefined' || !db) return;
+  if(!firestoreOn() || typeof db==='undefined' || !db) return false;
   try{
-    const u=(typeof firebaseAuth!=='undefined' && firebaseAuth && firebaseAuth.currentUser) ? firebaseAuth.currentUser : null;
-    if(!u) return;
+    let u=(typeof firebaseAuth!=='undefined' && firebaseAuth && firebaseAuth.currentUser) ? firebaseAuth.currentUser : null;
+    if(!u && typeof _ensureCustomerAuth==='function'){ try{ await _ensureCustomerAuth(); }catch(e){} u=(typeof firebaseAuth!=='undefined' && firebaseAuth && firebaseAuth.currentUser) ? firebaseAuth.currentUser : null; }
+    if(!u){ try{ console.error('Coupon sync: no signed-in user'); }catch(e){} return false; }
+    let failed=null;
     for(const c of (coupons||[])){
-      try{ await db.collection('coupons').doc(String(c.code||'').toUpperCase()).set(Object.assign({}, c, {code:String(c.code||'').toUpperCase(), updatedAt:new Date().toISOString()})); }catch(e){}
+      try{ await db.collection('coupons').doc(String(c.code||'').toUpperCase()).set(Object.assign({}, c, {code:String(c.code||'').toUpperCase(), updatedAt:new Date().toISOString()})); }catch(e){ failed=e; }
     }
-  }catch(e){}
+    if(failed){ try{ console.error('Coupon sync failed:', failed); toast('Coupon cloud me save nahi hua: '+((failed&&failed.message)?failed.message:failed), false); }catch(e){} return false; }
+    return true;
+  }catch(e){ try{ console.error('Coupon sync failed:', e); }catch(e){} return false; }
 }
 async function loadCouponsFromFirestore(){
   if(!firestoreOn() || typeof db==='undefined' || !db) return;
