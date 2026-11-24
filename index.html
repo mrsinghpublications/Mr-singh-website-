@@ -2874,7 +2874,7 @@ async function syncCouponsToFirestore(){
   try{
     let u=(typeof firebaseAuth!=='undefined' && firebaseAuth && firebaseAuth.currentUser) ? firebaseAuth.currentUser : null;
     if(!u && typeof _ensureCustomerAuth==='function'){ try{ await _ensureCustomerAuth(); }catch(e){} u=(typeof firebaseAuth!=='undefined' && firebaseAuth && firebaseAuth.currentUser) ? firebaseAuth.currentUser : null; }
-    if(!u){ try{ console.error('Coupon sync: no signed-in user'); }catch(e){} return false; }
+    if(!u){ try{ console.error('Coupon sync: no signed-in user'); toast('Coupon cloud me save nahi hua: login nahi mila — dobara Google sign-in karke coupon banayein.', false); }catch(e){} return false; }
     let failed=null;
     for(const c of (coupons||[])){
       try{ await db.collection('coupons').doc(String(c.code||'').toUpperCase()).set(Object.assign({}, c, {code:String(c.code||'').toUpperCase(), updatedAt:new Date().toISOString()})); }catch(e){ failed=e; }

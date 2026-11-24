@@ -1,5 +1,5 @@
 /* Mr Singh Publications — Service Worker (PWA offline shell + push) */
-const CACHE = 'msp-v19-5-3';
+const CACHE = 'msp-v19-5-4';
 const CORE = ['index.html', 'logo.png', 'icon.jpg', 'manifest.json'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).catch(() => {}));
@@ -13,7 +13,21 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
   // Local files: cache-first, fall back to network. CDN / Firebase / payment links: network only.
+  // v19.5.4: index.html is ALWAYS network-first (cache only as offline fallback) —
+  // cache-first yahan purana index.html serve kar deta tha, isliye naye fix
+  // deploy hone ke baad bhi browser purana code chalata rehta tha.
   if (url.origin === self.location.origin) {
+    const isIndex = url.pathname === '/' || url.pathname.endsWith('/index.html');
+    if (isIndex) {
+      e.respondWith(
+        fetch(e.request).then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(e.request, copy)).catch(() => {});
+          return res;
+        }).catch(() => caches.match(e.request).then((hit) => hit || caches.match('index.html')))
+      );
+      return;
+    }
     e.respondWith(
       caches.match(e.request).then((hit) => hit || fetch(e.request).then((res) => {
         const copy = res.clone();
