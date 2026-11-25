@@ -1,5 +1,5 @@
 /* Mr Singh Publications — Service Worker (PWA offline shell + push) */
-const CACHE = 'msp-v19-5-6';
+const CACHE = 'msp-v19-5-8';
 const CORE = ['index.html', 'logo.png', 'icon.jpg', 'manifest.json'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).catch(() => {}));
